@@ -9,7 +9,7 @@ export default function PausePage() {
         ← Back
       </Link>
       <h1 className="mt-4 text-center text-3xl font-bold tracking-tight text-stone-900">
-        Pause <span className="text-base font-normal text-stone-500">— 90 seconds</span>
+        Pause <span className="text-base font-normal text-stone-600">— 90 seconds</span>
       </h1>
       <p className="mx-auto mt-2 max-w-md text-center leading-relaxed text-stone-600">
         You don&apos;t have to win an argument with the urge. You just have
@@ -28,7 +28,7 @@ export default function PausePage() {
         >
           Continue to Choose →
         </Link>
-        <p className="mt-3 text-sm text-stone-500">
+        <p className="mt-3 text-sm text-stone-600">
           Eat, swap, or delay — all three are fine. The dashboard and the
           Choose step arrive with the Day 4 build.
         </p>

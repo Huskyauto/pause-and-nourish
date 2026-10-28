@@ -52,7 +52,7 @@ export default function Home() {
         >
           Start a check-in
         </Link>
-        <p className="mt-2 text-sm text-stone-500">
+        <p className="mt-2 text-sm text-stone-600">
           Takes about two minutes, start to finish.
         </p>
         <CheckInCount />
@@ -81,7 +81,7 @@ export default function Home() {
               </span>
               <h2 className="text-xl font-semibold text-stone-900">
                 {step.title}
-                <span className="ml-2 text-sm font-normal text-stone-500">
+                <span className="ml-2 text-sm font-normal text-stone-600">
                   {step.time}
                 </span>
               </h2>
@@ -97,7 +97,7 @@ export default function Home() {
         ))}
       </section>
 
-      <footer className="mt-auto pt-10 text-center text-sm text-stone-500">
+      <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>Wellness info only, not medical advice.</p>
         <p className="mx-auto mt-2 max-w-md leading-relaxed">
           Pause &amp; Nourish is a personal habit tool built from one

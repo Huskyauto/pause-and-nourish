@@ -22,7 +22,7 @@ export default function CheckInCount() {
 
   if (count === null) return null;
   return (
-    <p className="mt-3 text-sm text-stone-500">
+    <p className="mt-3 text-sm text-stone-600">
       Check-ins on this device: {count}
     </p>
   );

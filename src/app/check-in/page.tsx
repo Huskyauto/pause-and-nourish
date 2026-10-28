@@ -65,7 +65,7 @@ function ScaleRow({
   return (
     <div>
       <p className="font-semibold text-stone-900">
-        {label} {hint && <span className="font-normal text-stone-500">{hint}</span>}
+        {label} {hint && <span className="font-normal text-stone-600">{hint}</span>}
       </p>
       <div className="mt-2 flex gap-2">
         {nums.map((n) => (
@@ -177,14 +177,14 @@ export default function CheckInPage() {
         ← Back
       </Link>
       <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">
-        Notice <span className="text-base font-normal text-stone-500">— about 30 seconds</span>
+        Notice <span className="text-base font-normal text-stone-600">— about 30 seconds</span>
       </h1>
 
       <div className="mt-4" aria-hidden="true">
         <div className="h-2 w-full rounded-full bg-[#e7efe3]">
           <div className="h-2 rounded-full bg-[#2f5d3a] transition-all" style={{ width: `${progress}%` }} />
         </div>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-stone-600">
           {phase === "done" ? "Done" : `Step ${step + 1} of ${TOTAL_STEPS}`}
         </p>
       </div>
@@ -261,7 +261,7 @@ export default function CheckInPage() {
             ))}
           </div>
           <p className="mt-6 font-semibold text-stone-900">
-            The pull is mostly… <span className="font-normal text-stone-500">(optional)</span>
+            The pull is mostly… <span className="font-normal text-stone-600">(optional)</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {triggerCategories.map((t) => (
@@ -327,7 +327,7 @@ export default function CheckInPage() {
               Not sure
             </button>
           </div>
-          {saving && <p className="mt-4 text-sm text-stone-500">Saving…</p>}
+          {saving && <p className="mt-4 text-sm text-stone-600">Saving…</p>}
         </section>
       )}
 
@@ -337,7 +337,7 @@ export default function CheckInPage() {
           <p className="mt-2 leading-relaxed text-stone-600">
             Body hunger, answered with food — that&apos;s the system working.
           </p>
-          <p className="mt-6 text-sm text-stone-500">
+          <p className="mt-6 text-sm text-stone-600">
             {saveFailed ? "Couldn't save on this device." : "Check-in saved on this device."}
           </p>
           <div className="mt-6">
@@ -350,12 +350,12 @@ export default function CheckInPage() {
 
       {phase === "done" && endKind === "pause" && (
         <section className="mt-8">
-          <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">A line for this moment</p>
+          <p className="text-sm font-medium tracking-wide text-stone-600 uppercase">A line for this moment</p>
           <p className="mt-3 text-2xl leading-snug font-semibold text-stone-900">{reframe}</p>
           <p className="mt-4 text-stone-600">
             From your starter library — later, your Shield Plan replaces these with your own words.
           </p>
-          <p className="mt-6 text-sm text-stone-500">
+          <p className="mt-6 text-sm text-stone-600">
             {saveFailed ? "Couldn't save on this device — the pause still works." : "Check-in saved on this device."}
           </p>
           <div className="mt-6 flex flex-col gap-3">
@@ -418,12 +418,12 @@ export default function CheckInPage() {
       )}
 
       {phase === "steps" && step > 0 && (
-        <button type="button" onClick={back} className="mt-10 self-start text-sm font-medium text-stone-500 underline underline-offset-4">
+        <button type="button" onClick={back} className="mt-10 self-start text-sm font-medium text-stone-600 underline underline-offset-4">
           ← Previous step
         </button>
       )}
 
-      <footer className="mt-auto pt-10 text-center text-sm text-stone-500">
+      <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>
           Saved only on this device. Your journal never leaves your phone unless you choose to reflect on an entry
           with the companion (coming Day 5).

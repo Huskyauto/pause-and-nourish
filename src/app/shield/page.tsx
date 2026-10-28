@@ -8,7 +8,7 @@ const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
 const addBtnClass =
   "shrink-0 rounded-full bg-[#2f5d3a] px-5 py-3 font-semibold text-white transition hover:bg-[#274c30] disabled:opacity-40";
-const removeBtnClass = "text-sm font-medium text-stone-400 underline underline-offset-4 hover:text-stone-600";
+const removeBtnClass = "text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700";
 
 export default function ShieldPage() {
   const [plan, setPlan] = useState<ShieldPlan | null>(null);
@@ -44,7 +44,7 @@ export default function ShieldPage() {
   if (!plan) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
-        <p className="text-stone-500">Loading your Shield Plan…</p>
+        <p className="text-stone-600">Loading your Shield Plan…</p>
       </main>
     );
   }
@@ -62,7 +62,7 @@ export default function ShieldPage() {
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">When this pulls at me… here&apos;s what I can do instead</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-stone-600">
           Name a moment (like &ldquo;Watching TV&rdquo; or &ldquo;Kitchen&rdquo;), then add what you can do instead.
         </p>
         <div className="mt-4 flex flex-col gap-4">
@@ -143,7 +143,7 @@ export default function ShieldPage() {
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Places where I want to be ready</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-stone-600">
           Places you name yourself. The app doesn&apos;t track your location — you just tell it where to be extra
           ready with your own words.
         </p>
@@ -175,7 +175,7 @@ export default function ShieldPage() {
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">The thought that pops up — and what I can tell myself instead</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-stone-600">
           In your own words. These come back to you in hard moments.
         </p>
         <div className="mt-4 flex flex-col gap-3">
@@ -183,7 +183,7 @@ export default function ShieldPage() {
             <div key={i} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-stone-500 italic">&ldquo;{pair.negative}&rdquo;</p>
+                  <p className="text-stone-600 italic">&ldquo;{pair.negative}&rdquo;</p>
                   <p className="mt-1 font-medium text-stone-900">&ldquo;{pair.positive}&rdquo;</p>
                 </div>
                 <button type="button" className={removeBtnClass} onClick={() => update({ ...plan, thoughtPairs: plan.thoughtPairs.filter((_, j) => j !== i) })}>
@@ -211,7 +211,7 @@ export default function ShieldPage() {
         </div>
       </section>
 
-      <footer className="mt-auto pt-10 text-center text-sm text-stone-500">
+      <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>Wellness info only, not medical advice.</p>
       </footer>
     </main>

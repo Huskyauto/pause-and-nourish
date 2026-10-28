@@ -61,7 +61,7 @@ export default function PauseTimer() {
           <span className="text-5xl font-bold tabular-nums text-stone-900">
             {minutes}:{String(seconds).padStart(2, "0")}
           </span>
-          <span className="mt-1 text-sm text-stone-500">
+          <span className="mt-1 text-sm text-stone-600">
             {done ? "pause complete" : running ? "pausing…" : "ready when you are"}
           </span>
         </div>

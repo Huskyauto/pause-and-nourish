@@ -24,10 +24,10 @@ function SavedNoteInner() {
   }, [entryId]);
 
   if (saveFailed) {
-    return <p className="mt-3 text-center text-sm text-stone-500">Couldn&apos;t save on this device — the pause still works.</p>;
+    return <p className="mt-3 text-center text-sm text-stone-600">Couldn&apos;t save on this device — the pause still works.</p>;
   }
   if (entryId && saved) {
-    return <p className="mt-3 text-center text-sm text-stone-500">Check-in saved on this device.</p>;
+    return <p className="mt-3 text-center text-sm text-stone-600">Check-in saved on this device.</p>;
   }
   return null;
 }

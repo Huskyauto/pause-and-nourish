@@ -1,26 +1,14 @@
 @import "tailwindcss";
 
+/* Pause & Nourish ships one calm light theme on every device. Pinning the
+   color scheme stops phones in dark mode from re-skinning the app into an
+   unreadable dark-on-dark layout (the stock template's dark background
+   block did exactly that on 2026-10-27). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #faf7f0;
+  color: #1c1917;
 }

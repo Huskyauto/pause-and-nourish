@@ -41,7 +41,7 @@ export default function DashboardPage() {
         </p>
       </section>
 
-      <footer className="mt-auto pt-10 text-center text-sm text-stone-500">
+      <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>Wellness info only, not medical advice.</p>
       </footer>
     </main>
