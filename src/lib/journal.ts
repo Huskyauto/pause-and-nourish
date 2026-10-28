@@ -43,28 +43,35 @@ export interface JournalEntry {
   copingUsed: string | null;
   copingEffectiveness: number | null; // 1–5
   source: "notice" | "sos";
+  urgeAfter: number | null; // 0–5, captured on the outcome screen (Day 3)
+  cueAnswer: "me" | "not-me" | "good" | null; // SOS cue answer tap (Day 3)
 }
 
 export interface ShieldPlan {
   triggerOptions: { trigger: string; options: string[] }[];
   dangerPlaces: string[];
   thoughtPairs: { negative: string; positive: string }[];
+  whyLine: string; // the user's own "why", shown large on the SOS screen
 }
 
 export const EMPTY_SHIELD_PLAN: ShieldPlan = {
   triggerOptions: [],
   dangerPlaces: [],
   thoughtPairs: [],
+  whyLine: "",
 };
 
 const DB_NAME = "pause-and-nourish";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const JOURNAL_STORE = "journal";
 const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
+const CUE_STORE = "voiceCue";
+const CUE_KEY = "cue";
 
 const LS_JOURNAL = "pn.journal";
 const LS_SHIELD = "pn.shieldPlan";
+const LS_CUE = "pn.voiceCue";
 
 // ---------- IndexedDB backend ----------
 
@@ -79,6 +86,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SHIELD_STORE)) {
         db.createObjectStore(SHIELD_STORE, { keyPath: "key" });
+      }
+      if (!db.objectStoreNames.contains(CUE_STORE)) {
+        db.createObjectStore(CUE_STORE, { keyPath: "key" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -141,6 +151,37 @@ async function idbSaveShieldPlan(plan: ShieldPlan): Promise<void> {
   db.close();
 }
 
+// ---------- Voice cue (the user's own recording, on-device only) ----------
+
+interface CueRecord {
+  blob: Blob;
+  mimeType: string;
+  recordedAt: string;
+}
+
+async function idbSaveCue(rec: CueRecord): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(CUE_STORE, "readwrite");
+  await idbRequest(tx.objectStore(CUE_STORE).put({ key: CUE_KEY, ...rec }));
+  db.close();
+}
+
+async function idbGetCue(): Promise<CueRecord | null> {
+  const db = await openDb();
+  const tx = db.transaction(CUE_STORE, "readonly");
+  const rec = await idbRequest(tx.objectStore(CUE_STORE).get(CUE_KEY));
+  db.close();
+  const found = rec as (CueRecord & { key: string }) | undefined;
+  return found?.blob ? { blob: found.blob, mimeType: found.mimeType, recordedAt: found.recordedAt } : null;
+}
+
+async function idbDeleteCue(): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(CUE_STORE, "readwrite");
+  await idbRequest(tx.objectStore(CUE_STORE).delete(CUE_KEY));
+  db.close();
+}
+
 // ---------- localStorage fallback ----------
 
 function lsRead<T>(key: string, fallback: T): T {
@@ -195,6 +236,8 @@ export async function addEntry(input: Partial<JournalEntry>): Promise<JournalEnt
     copingUsed: input.copingUsed ?? null,
     copingEffectiveness: input.copingEffectiveness ?? null,
     source: input.source ?? "notice",
+    urgeAfter: input.urgeAfter ?? null,
+    cueAnswer: input.cueAnswer ?? null,
   };
   await withFallback(
     () => idbAddEntry(entry),
@@ -251,9 +294,63 @@ export async function clearAll(): Promise<void> {
 }
 
 export async function getShieldPlan(): Promise<ShieldPlan> {
-  return withFallback(idbGetShieldPlan, () =>
-    lsRead<ShieldPlan>(LS_SHIELD, { ...EMPTY_SHIELD_PLAN }),
+  return withFallback(idbGetShieldPlan, () => ({
+    ...EMPTY_SHIELD_PLAN,
+    ...lsRead<ShieldPlan>(LS_SHIELD, { ...EMPTY_SHIELD_PLAN }),
+  }));
+}
+
+// ---------- Voice cue public API ----------
+
+export async function saveCue(blob: Blob): Promise<void> {
+  const rec: CueRecord = {
+    blob,
+    mimeType: blob.type || "audio/webm",
+    recordedAt: new Date().toISOString(),
+  };
+  await withFallback(
+    () => idbSaveCue(rec),
+    () => {
+      // localStorage cannot hold a Blob — store a data URL instead.
+      const reader = new FileReader();
+      reader.onload = () => lsWrite(LS_CUE, { dataUrl: String(reader.result), recordedAt: rec.recordedAt });
+      reader.readAsDataURL(blob);
+    },
   );
+}
+
+export async function getCue(): Promise<CueRecord | null> {
+  if (typeof indexedDB !== "undefined") {
+    try {
+      return await idbGetCue();
+    } catch {
+      // Fall through to the localStorage copy.
+    }
+  }
+  const stored = lsRead<{ dataUrl?: string; recordedAt?: string }>(LS_CUE, {});
+  if (!stored.dataUrl) return null;
+  try {
+    // fetch() on a data URL resolves to a Blob of the recorded audio.
+    const res = await fetch(stored.dataUrl);
+    const blob = await res.blob();
+    return { blob, mimeType: blob.type, recordedAt: stored.recordedAt ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+export async function hasCue(): Promise<boolean> {
+  return (await getCue()) !== null;
+}
+
+export async function deleteCue(): Promise<void> {
+  await withFallback(idbDeleteCue, () => {
+    try {
+      localStorage.removeItem(LS_CUE);
+    } catch {
+      // Nothing to delete.
+    }
+  });
 }
 
 export async function saveShieldPlan(plan: ShieldPlan): Promise<void> {

@@ -63,6 +63,19 @@ export default function Home() {
         </p>
       </div>
 
+      <div className="mt-8 rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-5 text-center">
+        <p className="font-semibold text-stone-900">Already in it?</p>
+        <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
+          Skip the form. Go straight to the pause — your own voice first, questions after.
+        </p>
+        <Link
+          href="/pause?sos=1"
+          className="mt-3 inline-block rounded-full bg-[#9a3b26] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#7f3120] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#9a3b26]/40"
+        >
+          I&apos;m in it — SOS
+        </Link>
+      </div>
+
       <section
         aria-label="How Pause and Nourish works"
         className="mt-10 flex flex-col gap-4"

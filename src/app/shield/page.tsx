@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
+import { EMPTY_SHIELD_PLAN, getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
+import VoiceCueSetup from "./VoiceCueSetup";
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
@@ -25,7 +26,7 @@ export default function ShieldPage() {
         if (live) setPlan(p);
       })
       .catch(() => {
-        if (live) setPlan({ triggerOptions: [], dangerPlaces: [], thoughtPairs: [] });
+        if (live) setPlan({ ...EMPTY_SHIELD_PLAN });
       });
     return () => {
       live = false;
@@ -209,6 +210,31 @@ export default function ShieldPage() {
             Add pair
           </button>
         </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">My why</h2>
+        <p className="mt-1 text-sm text-stone-600">
+          One line, in your words — the reason that matters at 8 PM, not just at setup time. It shows up
+          large on the SOS screen.
+        </p>
+        <input
+          value={plan.whyLine}
+          onChange={(e) => setPlan({ ...plan, whyLine: e.target.value })}
+          onBlur={() => {
+            saveShieldPlan(plan).catch(() => {
+              // Saved in state; storage failure must not break setup.
+            });
+          }}
+          className={`${inputClass} mt-3`}
+          placeholder="e.g. I want to feel good tomorrow morning"
+          maxLength={140}
+        />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your second-brain voice</h2>
+        <VoiceCueSetup whyLine={plan.whyLine} />
       </section>
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">

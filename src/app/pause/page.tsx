@@ -1,6 +1,6 @@
+import { Suspense } from "react";
 import Link from "next/link";
-import PauseTimer from "./PauseTimer";
-import SavedNote from "./SavedNote";
+import PauseClient from "./PauseClient";
 
 export default function PausePage() {
   return (
@@ -12,27 +12,12 @@ export default function PausePage() {
         Pause <span className="text-base font-normal text-stone-600">— 90 seconds</span>
       </h1>
       <p className="mx-auto mt-2 max-w-md text-center leading-relaxed text-stone-600">
-        You don&apos;t have to win an argument with the urge. You just have
-        to give it ninety seconds of room.
+        You don&apos;t have to win an argument with the urge. You just have to give it ninety
+        seconds of room.
       </p>
-      <SavedNote />
-
-      <div className="mt-10">
-        <PauseTimer />
-      </div>
-
-      <div className="mt-10 text-center">
-        <Link
-          href="/dashboard"
-          className="inline-block rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
-        >
-          Continue to Choose →
-        </Link>
-        <p className="mt-3 text-sm text-stone-600">
-          Eat, swap, or delay — all three are fine. The dashboard and the
-          Choose step arrive with the Day 4 build.
-        </p>
-      </div>
+      <Suspense fallback={<p className="mt-10 text-center text-stone-600">Loading the pause…</p>}>
+        <PauseClient />
+      </Suspense>
     </main>
   );
 }
