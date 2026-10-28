@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CheckInCount from "@/components/CheckInCount";
 
 const steps = [
   {
@@ -53,6 +54,12 @@ export default function Home() {
         </Link>
         <p className="mt-2 text-sm text-stone-500">
           Takes about two minutes, start to finish.
+        </p>
+        <CheckInCount />
+        <p className="mt-2 text-sm">
+          <Link href="/shield" className="font-medium text-[#2f5d3a] underline decoration-[#2f5d3a]/40 underline-offset-4 hover:decoration-[#2f5d3a]">
+            Your Shield Plan →
+          </Link>
         </p>
       </div>
 

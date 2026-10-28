@@ -1,5 +1,5 @@
-const CACHE = "pause-and-nourish-v1";
-const CORE = ["/", "/check-in", "/pause", "/dashboard", "/icon.svg"];
+const CACHE = "pause-and-nourish-v2";
+const CORE = ["/", "/check-in", "/pause", "/dashboard", "/shield", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

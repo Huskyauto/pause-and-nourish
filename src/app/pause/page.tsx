@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PauseTimer from "./PauseTimer";
+import SavedNote from "./SavedNote";
 
 export default function PausePage() {
   return (
@@ -14,6 +15,7 @@ export default function PausePage() {
         You don&apos;t have to win an argument with the urge. You just have
         to give it ninety seconds of room.
       </p>
+      <SavedNote />
 
       <div className="mt-10">
         <PauseTimer />
