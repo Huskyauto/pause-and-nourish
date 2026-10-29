@@ -164,8 +164,7 @@ export default function DashboardPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">Your week, gently</h1>
       <p className="mt-2 leading-relaxed text-stone-600">
-        Patterns, not grades. This page fills in from the check-ins saved on
-        your device — nothing leaves your phone.
+        Patterns, not grades — all from this device. Nothing leaves your phone.
       </p>
 
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2" aria-label="Weekly summary">
@@ -181,9 +180,7 @@ export default function DashboardPage() {
         <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <h2 className="font-semibold text-stone-900">Nothing here yet</h2>
           <p className="mt-2 leading-relaxed text-stone-600">
-            This page reads your own check-ins from this device. After your first check-in and
-            pause, your counts show up here — and once a few land, your patterns start reflecting
-            back, in your words.
+            After your first check-in and pause, your counts show up here.
           </p>
         </section>
       )}
@@ -191,9 +188,8 @@ export default function DashboardPage() {
       {entries && all.length > 0 && all.length < 3 && (
         <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           <p className="leading-relaxed text-stone-600">
-            Early days — the counts above are real, from your device. Once a few more check-ins
-            land, this page starts reflecting your patterns back: the hour your entries cluster
-            around, the need you name most, and what has actually helped, in your numbers.
+            Early days — these counts are real, from your device. A few more check-ins and your
+            patterns start showing up here.
           </p>
         </section>
       )}
@@ -212,7 +208,6 @@ export default function DashboardPage() {
       {entries && needRows.length > 0 && (
         <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm" aria-label="Needs you have named">
           <h2 className="font-semibold text-stone-900">What you were reaching for</h2>
-          <p className="mt-1 text-sm text-stone-600">The needs you named yourself, at check-in.</p>
           <div className="mt-4 flex flex-col gap-3">
             {needRows.map(([need, count]) => (
               <div key={need}>
@@ -257,9 +252,8 @@ export default function DashboardPage() {
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-stone-900">Your companion</h2>
         <p className="mt-2 leading-relaxed text-stone-600">
-          Once you&apos;ve checked in a few times, a companion powered by
-          Meta&apos;s models will reflect your own patterns back to you —
-          in your words, not advice. It arrives with the Day 5 build.
+          Coming with the Day 5 build: a companion powered by Meta&apos;s models that reflects
+          your own patterns back — in your words, not advice.
         </p>
       </section>
 

@@ -6,7 +6,7 @@ import { deleteCue, getCue, saveCue, type CueKind } from "@/lib/journal";
 // The locked cue scripts (Second Brain + Voice Brief, adopted 2026-10-27,
 // Bob's lock 2026-10-28). A is the editable default suggestion — every
 // user's scene differs, so the words are theirs to change before recording.
-const SCRIPT_A =
+export const SCRIPT_A =
   "Okay — couch, TV on. I want to feel good tomorrow morning — that's my why. Is this hunger, or the movie?";
 const SCRIPT_C = "I'm in it right now. I want to be kind to myself tomorrow. Hunger, or habit?";
 
@@ -34,22 +34,36 @@ interface SlotCopy {
 
 // One recording slot (Day 3 cue / Day 4 reset line). Same mechanics and
 // storage discipline for both; only the words and the `kind` differ.
-function RecordingSlot({
+export function RecordingSlot({
   kind,
   initialScript,
   copy,
   scriptExtras,
+  variant = "full",
+  onSavedChange,
 }: {
   kind: CueKind;
   initialScript: string;
   copy: SlotCopy;
   scriptExtras?: (setScript: (s: string) => void) => ReactNode;
+  // "simple" = the voice-first home variant: no script editing — the words
+  // show as a read-along example and the one record button is the page.
+  variant?: "full" | "simple";
+  // Fires when the stored state becomes known ("load"), after a
+  // successful save ("save"), and after a delete ("delete"). Never on a
+  // bare re-record tap — the old recording still exists in storage until
+  // a new one replaces it.
+  onSavedChange?: (has: boolean, reason: "load" | "save" | "delete") => void;
 }) {
-  const [state, setState] = useState<CueState>("loading");
+  // The simple variant starts at "empty" so the one-button first-run state
+  // is the page from first paint; the load below still corrects it to
+  // "saved" / "unsupported" the moment storage answers.
+  const [state, setState] = useState<CueState>(variant === "simple" ? "empty" : "loading");
   const [script, setScript] = useState(initialScript);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
+  const savedChangeRef = useRef(onSavedChange);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -63,10 +77,15 @@ function RecordingSlot({
   }
 
   useEffect(() => {
+    savedChangeRef.current = onSavedChange;
+  }, [onSavedChange]);
+
+  useEffect(() => {
     let live = true;
     getCue(kind)
       .then((cue) => {
         if (!live) return;
+        savedChangeRef.current?.(!!cue, "load");
         if (cue) {
           setUrl(URL.createObjectURL(cue.blob));
           setState("saved");
@@ -79,7 +98,10 @@ function RecordingSlot({
         }
       })
       .catch(() => {
-        if (live) setState("empty");
+        if (live) {
+          savedChangeRef.current?.(false, "load");
+          setState("empty");
+        }
       });
     return () => {
       live = false;
@@ -106,13 +128,16 @@ function RecordingSlot({
         streamRef.current = null;
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         if (blob.size > 0) {
+          let stored = false;
           try {
             await saveCue(blob, kind);
+            stored = true;
           } catch {
             // Preview still works this session even if storage failed.
           }
           setUrl(URL.createObjectURL(blob));
           setState("saved");
+          if (stored) savedChangeRef.current?.(true, "save");
         } else {
           setState("empty");
         }
@@ -145,11 +170,20 @@ function RecordingSlot({
     }
     setUrl(null);
     setState("empty");
+    savedChangeRef.current?.(false, "delete");
   }
 
   const chipClass =
     "rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]";
   const scriptId = `script-${kind}`;
+  const recordBtnClass =
+    variant === "simple"
+      ? "w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+      : "rounded-full bg-[#2f5d3a] px-6 py-3 font-semibold text-white transition hover:bg-[#274c30]";
+  const stopBtnClass =
+    variant === "simple"
+      ? "w-full rounded-full bg-[#9a3b26] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#7f3120]"
+      : "rounded-full bg-[#9a3b26] px-6 py-3 font-semibold text-white transition hover:bg-[#7f3120]";
 
   return (
     <div>
@@ -180,26 +214,36 @@ function RecordingSlot({
 
       {(state === "empty" || state === "recording" || state === "saved") && (
         <>
-          <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor={scriptId}>
-            {copy.scriptLabel}
-          </label>
-          <textarea
-            id={scriptId}
-            value={script}
-            onChange={(e) => setScript(e.target.value)}
-            rows={3}
-            maxLength={300}
-            className="mt-2 w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none"
-          />
-          {scriptExtras && <div className="mt-2 flex flex-wrap gap-2">{scriptExtras(setScript)}</div>}
+          {variant === "full" && (
+            <>
+              <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor={scriptId}>
+                {copy.scriptLabel}
+              </label>
+              <textarea
+                id={scriptId}
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+                rows={3}
+                maxLength={300}
+                className="mt-2 w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none"
+              />
+              {scriptExtras && <div className="mt-2 flex flex-wrap gap-2">{scriptExtras(setScript)}</div>}
+            </>
+          )}
+          {variant === "simple" && (
+            <figure className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+              <figcaption className="text-sm font-medium text-stone-600">
+                You can read this, word for word:
+              </figcaption>
+              <blockquote className="mt-2 leading-relaxed text-stone-900">
+                &ldquo;{script}&rdquo;
+              </blockquote>
+            </figure>
+          )}
 
           {state === "empty" && (
             <div className="mt-5">
-              <button
-                type="button"
-                onClick={startRecording}
-                className="rounded-full bg-[#2f5d3a] px-6 py-3 font-semibold text-white transition hover:bg-[#274c30]"
-              >
+              <button type="button" onClick={startRecording} className={recordBtnClass}>
                 {copy.recordLabel}
               </button>
               <p className="mt-2 text-sm text-stone-600">{copy.recordHint}</p>
@@ -208,11 +252,7 @@ function RecordingSlot({
 
           {state === "recording" && (
             <div className="mt-5">
-              <button
-                type="button"
-                onClick={stopRecording}
-                className="rounded-full bg-[#9a3b26] px-6 py-3 font-semibold text-white transition hover:bg-[#7f3120]"
-              >
+              <button type="button" onClick={stopRecording} className={stopBtnClass}>
                 ■ Stop — {Math.min(Math.floor(elapsed), MAX_SECONDS)}s
               </button>
               <p className="mt-2 text-sm text-stone-600" aria-live="polite">

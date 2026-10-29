@@ -1,34 +1,96 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import CheckInCount from "@/components/CheckInCount";
+import { getCue } from "@/lib/journal";
+import { RecordingSlot, SCRIPT_A } from "./shield/VoiceCueSetup";
 
-const steps = [
-  {
-    number: "1",
-    title: "Notice",
-    time: "30 seconds",
-    body: "Name what's happening right now — your mood, where you are, and how hungry your body actually is. No judgment, just information.",
-    href: "/check-in",
-    cta: "Start a check-in",
-  },
-  {
-    number: "2",
-    title: "Pause",
-    time: "90 seconds",
-    body: "Give the urge a little room to breathe. Slow breathing, a grounding exercise, or a short walk — urges often crest and pass like a wave.",
-    href: "/pause",
-    cta: "Open the pause toolkit",
-  },
-  {
-    number: "3",
-    title: "Choose",
-    time: "your call",
-    body: "Eat, swap for something else, or delay a few minutes. Every choice counts, and every choice is okay. Nothing here is scored or shamed.",
-    href: "/dashboard",
-    cta: "See your dashboard",
-  },
-];
+// Voice-first home (Oct 29 revamp, Bob's direction after using the app):
+// no cue saved → the whole page is one button, "Add your voice", with the
+// words to say shown as a read-along example. Cue saved → home leads with
+// the SOS button; everything else is a quiet secondary link. The full
+// setup lives one tap away under "More options" and is optional.
+
+const secondaryLinkClass =
+  "font-medium text-[#2f5d3a] underline decoration-[#2f5d3a]/40 underline-offset-4 hover:decoration-[#2f5d3a]";
+
+function SecondaryLinks() {
+  return (
+    <nav aria-label="More ways in" className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-base">
+      <Link href="/check-in" className={secondaryLinkClass}>
+        Check in
+      </Link>
+      <Link href="/dashboard" className={secondaryLinkClass}>
+        Your week
+      </Link>
+      <Link href="/shield" className={secondaryLinkClass}>
+        More options
+      </Link>
+    </nav>
+  );
+}
 
 export default function Home() {
+  // First paint assumes no cue (the first-run state); the recorder slot
+  // reports the real stored state as soon as it loads, and on every
+  // save/delete after that.
+  const [hasCue, setHasCue] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const [editingVoice, setEditingVoice] = useState(false);
+  const [cueUrl, setCueUrl] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  function handleSavedChange(has: boolean, reason: "load" | "save" | "delete") {
+    if (reason === "load") {
+      // A slot reporting what it found in storage — layout follows, but
+      // nothing was "just saved" and an open editor stays open.
+      setHasCue(has);
+      return;
+    }
+    if (reason === "save") {
+      setHasCue(true);
+      setJustSaved(true);
+      setEditingVoice(false);
+      return;
+    }
+    // delete
+    setHasCue(false);
+    setJustSaved(false);
+    setEditingVoice(false);
+  }
+
+  // Load the saved cue for the "Play my voice" button.
+  useEffect(() => {
+    if (!hasCue) {
+      setCueUrl(null);
+      return;
+    }
+    let live = true;
+    let url: string | null = null;
+    getCue()
+      .then((cue) => {
+        if (live && cue) {
+          url = URL.createObjectURL(cue.blob);
+          setCueUrl(url);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [hasCue, editingVoice]);
+
+  function playCue() {
+    if (!cueUrl) return;
+    if (!audioRef.current || audioRef.current.src !== cueUrl) {
+      audioRef.current = new Audio(cueUrl);
+    }
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {});
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
       <header className="text-center">
@@ -39,76 +101,104 @@ export default function Home() {
           Pause &amp; Nourish
         </h1>
         <p className="mx-auto mt-3 max-w-md text-base leading-relaxed text-stone-600">
-          A pause button for a habit. When the urge to eat shows up, you
-          don&apos;t need more willpower — you need ninety seconds and a
-          kinder question.
+          A pause button for a habit — in your own voice.
         </p>
       </header>
 
-      <div className="mt-8 text-center">
-        <Link
-          href="/check-in"
-          className="inline-block rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#2f5d3a]/40"
-        >
-          Start a check-in
-        </Link>
-        <p className="mt-2 text-sm text-stone-600">
-          Takes about two minutes, start to finish.
-        </p>
-        <CheckInCount />
-        <p className="mt-2 text-sm">
-          <Link href="/shield" className="font-medium text-[#2f5d3a] underline decoration-[#2f5d3a]/40 underline-offset-4 hover:decoration-[#2f5d3a]">
-            Your Shield Plan →
-          </Link>
-        </p>
-      </div>
+      {!hasCue && (
+        <section className="mt-10 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-bold text-stone-900">Start with your voice.</h2>
+          <RecordingSlot
+            kind="cue"
+            variant="simple"
+            initialScript={SCRIPT_A}
+            onSavedChange={handleSavedChange}
+            copy={{
+              intro:
+                "Record one short line — your why, in your own words. When a hard moment hits, you tap one button and hear yourself say it. It never leaves this phone.",
+              scriptLabel: "",
+              recordLabel: "Add your voice",
+              recordHint: "Tap, read the words out loud (or say your own), tap stop. About 10 seconds.",
+              savedMessage: "That's your voice. It's saved on this phone.",
+              savedFootnote: "This is the voice that plays when you tap “I'm in it.”",
+              deleteLabel: "Delete voice",
+            }}
+          />
+        </section>
+      )}
 
-      <div className="mt-8 rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-5 text-center">
-        <p className="font-semibold text-stone-900">Already in it?</p>
-        <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
-          Skip the form. Go straight to the pause — your own voice first, questions after.
-        </p>
-        <Link
-          href="/pause?sos=1"
-          className="mt-3 inline-block rounded-full bg-[#9a3b26] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#7f3120] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#9a3b26]/40"
-        >
-          I&apos;m in it — SOS
-        </Link>
-      </div>
+      {hasCue && (
+        <>
+          {justSaved && (
+            <p className="mt-8 rounded-2xl border border-[#2f5d3a]/30 bg-[#e7efe3] px-5 py-4 text-center font-medium text-stone-900">
+              ✓ That&apos;s your voice. It&apos;s saved on this phone.
+            </p>
+          )}
 
-      <section
-        aria-label="How Pause and Nourish works"
-        className="mt-10 flex flex-col gap-4"
-      >
-        {steps.map((step) => (
-          <article
-            key={step.number}
-            className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-baseline gap-3">
-              <span
-                aria-hidden="true"
-                className="flex h-8 w-8 shrink-0 translate-y-1 items-center justify-center rounded-full bg-[#e7efe3] font-bold text-[#2f5d3a]"
-              >
-                {step.number}
-              </span>
-              <h2 className="text-xl font-semibold text-stone-900">
-                {step.title}
-                <span className="ml-2 text-sm font-normal text-stone-600">
-                  {step.time}
-                </span>
-              </h2>
-            </div>
-            <p className="mt-2 leading-relaxed text-stone-600">{step.body}</p>
+          <section className="mt-10 rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-6 text-center">
+            <p className="font-semibold text-stone-900">Already in it?</p>
+            <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
+              Skip the form. Go straight to the pause — your own voice first, questions after.
+            </p>
             <Link
-              href={step.href}
-              className="mt-3 inline-block font-medium text-[#2f5d3a] underline decoration-[#2f5d3a]/40 underline-offset-4 hover:decoration-[#2f5d3a]"
+              href="/pause?sos=1"
+              className="mt-4 inline-block w-full rounded-full bg-[#9a3b26] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#7f3120] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#9a3b26]/40"
             >
-              {step.cta} →
+              I&apos;m in it — SOS
             </Link>
-          </article>
-        ))}
-      </section>
+          </section>
+
+          <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-semibold text-stone-900">Your voice</h2>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={playCue}
+                  disabled={!cueUrl}
+                  className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a] disabled:opacity-40"
+                >
+                  ▶ Play my voice
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingVoice((v) => !v);
+                    setJustSaved(false);
+                  }}
+                  className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]"
+                >
+                  {editingVoice ? "Close" : "Re-record"}
+                </button>
+              </div>
+            </div>
+            {editingVoice && (
+              <div className="mt-2 border-t border-stone-100 pt-2">
+                <RecordingSlot
+                  kind="cue"
+                  variant="simple"
+                  initialScript={SCRIPT_A}
+                  onSavedChange={handleSavedChange}
+                  copy={{
+                    intro: "Record it again whenever you like — the new one replaces the old when you stop.",
+                    scriptLabel: "",
+                    recordLabel: "Add your voice",
+                    recordHint: "Tap, read the words out loud (or say your own), tap stop. About 10 seconds.",
+                    savedMessage: "That's your voice. It's saved on this phone.",
+                    savedFootnote: "This is the voice that plays when you tap “I'm in it.”",
+                    deleteLabel: "Delete voice",
+                  }}
+                />
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      <SecondaryLinks />
+      <div className="text-center">
+        <CheckInCount />
+      </div>
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>Wellness info only, not medical advice.</p>

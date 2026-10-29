@@ -353,7 +353,7 @@ export default function CheckInPage() {
           <p className="text-sm font-medium tracking-wide text-stone-600 uppercase">A line for this moment</p>
           <p className="mt-3 text-2xl leading-snug font-semibold text-stone-900">{reframe}</p>
           <p className="mt-4 text-stone-600">
-            From your starter library — later, your Shield Plan replaces these with your own words.
+            From your starter library — later, your own words replace these.
           </p>
           <p className="mt-6 text-sm text-stone-600">
             {saveFailed ? "Couldn't save on this device — the pause still works." : "Check-in saved on this device."}

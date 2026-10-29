@@ -473,7 +473,7 @@ export default function PauseClient() {
           )}
           {mode === "notice" && entry?.plannedResponse && (
             <p className="mx-auto mt-2 max-w-md text-center leading-relaxed text-stone-600">
-              Your Shield Plan for this: <span className="font-medium text-stone-900">{entry.plannedResponse}</span>
+              Your plan for this: <span className="font-medium text-stone-900">{entry.plannedResponse}</span>
             </p>
           )}
           <h2 className="mt-6 text-center text-2xl font-bold text-stone-900">
@@ -761,9 +761,9 @@ export default function PauseClient() {
           ) : (
             !entry?.plannedResponse && (
               <p className="mx-auto mt-6 max-w-md text-center leading-relaxed text-stone-600">
-                Nothing is stocked yet. You can add your own swaps in your{" "}
+                Nothing is stocked yet. You can add your own swaps under{" "}
                 <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
-                  Shield Plan
+                  More options
                 </Link>{" "}
                 at a calm time — they will be waiting here.
               </p>

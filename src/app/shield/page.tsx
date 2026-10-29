@@ -55,7 +55,7 @@ export default function ShieldPage() {
   if (!plan) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
-        <p className="text-stone-600">Loading your Shield Plan…</p>
+        <p className="text-stone-600">Loading…</p>
       </main>
     );
   }
@@ -65,11 +65,44 @@ export default function ShieldPage() {
       <Link href="/" className="text-sm font-medium text-[#2f5d3a] underline underline-offset-4">
         ← Back
       </Link>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">Your Shield Plan</h1>
+      <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">Your words and swaps</h1>
       <p className="mt-2 leading-relaxed text-stone-600">
-        Set this up at a calm time. When a hard moment comes, the app hands you your own words and your own options —
-        nothing generic, nothing scored. Saved only on this device.
+        All of this is optional. Your voice is the main thing.
       </p>
+      <p className="mt-2 leading-relaxed text-stone-600">
+        Anything you add here — your why, your swaps, your plan — waits for you in a hard moment, in
+        your words. Nothing generic, nothing scored. Saved only on this device.
+      </p>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">My why</h2>
+        <p className="mt-1 text-sm text-stone-600">
+          One line, in your words — the reason that matters at 8 PM, not just at setup time. It shows up
+          large on the SOS screen.
+        </p>
+        <input
+          value={plan.whyLine}
+          onChange={(e) => setPlan({ ...plan, whyLine: e.target.value })}
+          onBlur={() => {
+            saveShieldPlan(plan).catch(() => {
+              // Saved in state; storage failure must not break setup.
+            });
+          }}
+          className={`${inputClass} mt-3`}
+          placeholder="e.g. I want to feel good tomorrow morning"
+          maxLength={140}
+        />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
+        <VoiceCueSetup whyLine={plan.whyLine} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
+        <ResetLineSetup />
+      </section>
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">When this pulls at me… here&apos;s what I can do instead</h2>
@@ -223,38 +256,8 @@ export default function ShieldPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">My why</h2>
-        <p className="mt-1 text-sm text-stone-600">
-          One line, in your words — the reason that matters at 8 PM, not just at setup time. It shows up
-          large on the SOS screen.
-        </p>
-        <input
-          value={plan.whyLine}
-          onChange={(e) => setPlan({ ...plan, whyLine: e.target.value })}
-          onBlur={() => {
-            saveShieldPlan(plan).catch(() => {
-              // Saved in state; storage failure must not break setup.
-            });
-          }}
-          className={`${inputClass} mt-3`}
-          placeholder="e.g. I want to feel good tomorrow morning"
-          maxLength={140}
-        />
-      </section>
-
-      <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">My plan, in one line</h2>
         <IfThenSection plan={plan} onUpdate={update} />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">Your second-brain voice</h2>
-        <VoiceCueSetup whyLine={plan.whyLine} />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
-        <ResetLineSetup />
       </section>
 
       <section className="mt-10">
