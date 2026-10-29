@@ -24,6 +24,7 @@ export default function ShieldPage() {
   const [newPlace, setNewPlace] = useState("");
   const [newNegative, setNewNegative] = useState("");
   const [newPositive, setNewPositive] = useState("");
+  const [cueVersion, setCueVersion] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -52,6 +53,18 @@ export default function ShieldPage() {
     }
   }
 
+  // The cue recorder sits directly under the voice choice at the top of
+  // this page. Saving a cue auto-sets the stored voice choice (own), and
+  // deleting clears it — pull the fresh plan so the choice section shows
+  // reality, and bump cueVersion so its preview re-checks the recording.
+  function handleCueChange(_has: boolean, reason: "load" | "save" | "delete") {
+    if (reason === "load") return;
+    setCueVersion((v) => v + 1);
+    getShieldPlan()
+      .then(setPlan)
+      .catch(() => {});
+  }
+
   if (!plan) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
@@ -75,6 +88,21 @@ export default function ShieldPage() {
       </p>
 
       <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">How your second brain reaches you</h2>
+        <VoiceChoiceSection plan={plan} onUpdate={update} cueVersion={cueVersion} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
+        <VoiceCueSetup whyLine={plan.whyLine} onSavedChange={handleCueChange} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
+        <ResetLineSetup />
+      </section>
+
+      <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">My why</h2>
         <p className="mt-1 text-sm text-stone-600">
           One line, in your words — the reason that matters at 8 PM, not just at setup time. It shows up
@@ -92,16 +120,6 @@ export default function ShieldPage() {
           placeholder="e.g. I want to feel good tomorrow morning"
           maxLength={140}
         />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
-        <VoiceCueSetup whyLine={plan.whyLine} />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
-        <ResetLineSetup />
       </section>
 
       <section className="mt-10">
@@ -258,11 +276,6 @@ export default function ShieldPage() {
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">My plan, in one line</h2>
         <IfThenSection plan={plan} onUpdate={update} />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">How your second brain reaches you</h2>
-        <VoiceChoiceSection plan={plan} onUpdate={update} />
       </section>
 
       <section className="mt-10">

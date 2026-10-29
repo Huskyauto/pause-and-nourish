@@ -381,6 +381,36 @@ export async function saveShieldPlan(plan: ShieldPlan): Promise<void> {
   );
 }
 
+// Recording the moment cue IS choosing your own voice (Bob's rule,
+// 2026-10-29): saving the cue anywhere — home or setup — sets the plan's
+// voiceChoice to "own" so the stored choice can never lag the reality.
+// An explicit later pick in the choice section still wins, because it
+// writes the plan after the recording does. Deleting the cue clears a
+// now-dangling "own" back to "later" (the app stays quiet) instead of
+// pointing at a recording that no longer exists. Bookkeeping only — a
+// failure here must never break the recording flow.
+export async function syncVoiceChoiceAfterCueSave(): Promise<void> {
+  try {
+    const plan = await getShieldPlan();
+    if (plan.voiceChoice !== "own") {
+      await saveShieldPlan({ ...plan, voiceChoice: "own" });
+    }
+  } catch {
+    // The cue itself is saved; the choice catches up next save.
+  }
+}
+
+export async function syncVoiceChoiceAfterCueDelete(): Promise<void> {
+  try {
+    const plan = await getShieldPlan();
+    if (plan.voiceChoice === "own") {
+      await saveShieldPlan({ ...plan, voiceChoice: "later" });
+    }
+  } catch {
+    // Nothing dangling that a later save can't fix.
+  }
+}
+
 // The Shield Plan option the user wrote for a trigger, if one matches the
 // context they just tapped. Populates plannedResponse on new entries.
 export function matchPlannedResponse(plan: ShieldPlan, context: string | null): string | null {

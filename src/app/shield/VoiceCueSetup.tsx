@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { deleteCue, getCue, saveCue, type CueKind } from "@/lib/journal";
+import {
+  deleteCue,
+  getCue,
+  saveCue,
+  syncVoiceChoiceAfterCueDelete,
+  syncVoiceChoiceAfterCueSave,
+  type CueKind,
+} from "@/lib/journal";
 
 // The locked cue scripts (Second Brain + Voice Brief, adopted 2026-10-27,
 // Bob's lock 2026-10-28). A is the editable default suggestion — every
@@ -135,6 +142,9 @@ export function RecordingSlot({
           } catch {
             // Preview still works this session even if storage failed.
           }
+          // Saving the moment cue is choosing your own voice — keep the
+          // stored choice in step, wherever the recording happened.
+          if (stored && kind === "cue") await syncVoiceChoiceAfterCueSave();
           setUrl(URL.createObjectURL(blob));
           setState("saved");
           if (stored) savedChangeRef.current?.(true, "save");
@@ -168,6 +178,8 @@ export function RecordingSlot({
     } catch {
       // Already gone is fine.
     }
+    // No recording left — an "own voice" choice must not dangle.
+    if (kind === "cue") await syncVoiceChoiceAfterCueDelete();
     setUrl(null);
     setState("empty");
     savedChangeRef.current?.(false, "delete");
@@ -287,10 +299,17 @@ export function RecordingSlot({
 const chipClass =
   "rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]";
 
-export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
+export default function VoiceCueSetup({
+  whyLine,
+  onSavedChange,
+}: {
+  whyLine: string;
+  onSavedChange?: (has: boolean, reason: "load" | "save" | "delete") => void;
+}) {
   return (
     <RecordingSlot
       kind="cue"
+      onSavedChange={onSavedChange}
       initialScript={SCRIPT_A}
       copy={{
         intro:

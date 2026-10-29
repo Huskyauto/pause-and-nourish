@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  getCue,
   listEntries,
   matchPlannedResponse,
   type Directness,
@@ -139,7 +140,7 @@ const VOICE_OPTIONS: { value: VoiceChoice; title: string; body: string }[] = [
   {
     value: "phone",
     title: "Use phone voice",
-    body: "Your device's built-in voice reads your words out loud.",
+    body: "Your device's built-in voice reads your words out loud — a generated voice, not yours.",
   },
   {
     value: "later",
@@ -151,31 +152,101 @@ const VOICE_OPTIONS: { value: VoiceChoice; title: string; body: string }[] = [
 export function VoiceChoiceSection({
   plan,
   onUpdate,
+  cueVersion = 0,
 }: {
   plan: ShieldPlan;
   onUpdate: (next: ShieldPlan) => void;
+  // Bumped by the page whenever the cue is saved or deleted, so the
+  // preview below re-checks what recording actually exists.
+  cueVersion?: number;
 }) {
   const [previewNote, setPreviewNote] = useState("");
+  const [cueUrl, setCueUrl] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
 
-  function preview() {
-    const text = plan.whyLine.trim() || "I'm in a moment. I want to feel good tomorrow.";
-    try {
-      const synth = window.speechSynthesis;
-      if (!synth) {
-        setPreviewNote("This device has no built-in voice to preview with.");
-        return;
+  // The preview must play what the moment will actually play — and the
+  // moment (the SOS screen) plays the recording whenever one exists.
+  // So: a saved recording always wins here, whatever the stored choice
+  // says. TTS is used only when phone voice is the picked channel and
+  // no recording exists, and it is labeled as the phone's voice.
+  useEffect(() => {
+    let live = true;
+    getCue("cue")
+      .then((cue) => {
+        if (!live) return;
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        urlRef.current = cue ? URL.createObjectURL(cue.blob) : null;
+        setCueUrl(urlRef.current);
+      })
+      .catch(() => {
+        if (live) setCueUrl(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [cueVersion]);
+
+  useEffect(
+    () => () => {
+      audioRef.current?.pause();
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+        // Nothing speaking.
       }
-      synth.cancel();
-      synth.speak(new SpeechSynthesisUtterance(text));
-      setPreviewNote(
-        plan.whyLine.trim()
-          ? "That was your why line, read aloud."
-          : "That was a neutral sample line — set your why above and the preview reads that instead.",
-      );
+    },
+    [],
+  );
+
+  function stopPreviewSounds() {
+    audioRef.current?.pause();
+    try {
+      window.speechSynthesis?.cancel();
     } catch {
-      setPreviewNote("Preview isn't available on this device.");
+      // Nothing speaking.
     }
   }
+
+  function preview() {
+    stopPreviewSounds();
+    if (cueUrl) {
+      const audio = new Audio(cueUrl);
+      audioRef.current = audio;
+      audio.play().catch(() => {});
+      setPreviewNote("That was your recording — your own voice, the one that plays in the moment.");
+      return;
+    }
+    if (plan.voiceChoice === "phone") {
+      const text = plan.whyLine.trim() || "I'm in a moment. I want to feel good tomorrow.";
+      try {
+        const synth = window.speechSynthesis;
+        if (!synth) {
+          setPreviewNote("This device has no built-in voice to preview with.");
+          return;
+        }
+        synth.speak(new SpeechSynthesisUtterance(text));
+        setPreviewNote(
+          plan.whyLine.trim()
+            ? "That was your phone's built-in voice reading your why — not a recording of you. Phone voice is the channel you picked."
+            : "That was your phone's built-in voice reading a sample line — not a recording of you. Once your why is set, the preview reads that instead.",
+        );
+      } catch {
+        setPreviewNote("Preview isn't available on this device.");
+      }
+      return;
+    }
+    setPreviewNote(
+      "Nothing of yours to play yet. In the moment, your why shows on screen in words — record your voice just below, and the preview will play you.",
+    );
+  }
+
+  const previewHelp = cueUrl
+    ? "Preview plays your recording — your own voice."
+    : plan.voiceChoice === "phone"
+      ? "Preview uses your phone's built-in voice — it won't sound like you."
+      : "No recording yet — preview has nothing of yours to play.";
 
   return (
     <div>
@@ -197,13 +268,19 @@ export function VoiceChoiceSection({
           </button>
         ))}
       </div>
+      {cueUrl && plan.voiceChoice !== "own" && (
+        <p className="mt-3 text-sm leading-relaxed text-stone-600">
+          You have a recording saved — that&apos;s what plays in the moment, whatever is picked here.
+        </p>
+      )}
       <button
         type="button"
         onClick={preview}
         className="mt-4 rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
       >
-        ▶ Preview the words
+        ▶ Preview what you&apos;ll hear
       </button>
+      <p className="mt-2 text-sm text-stone-600">{previewHelp}</p>
       {previewNote && <p className="mt-2 text-sm text-stone-600">{previewNote}</p>}
     </div>
   );
