@@ -11,6 +11,7 @@ import {
   updateEntry,
   type JournalEntry,
   type Need,
+  type ShieldPlan,
 } from "@/lib/journal";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
 
@@ -22,9 +23,60 @@ import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools"
 //   outcome capture. No form stands in front of the pause.
 //   open path: plain /pause — the toolkit on its own, nothing logged.
 
-type Phase = "loading" | "sos" | "sos-exit" | "pick" | "run" | "outcome" | "done";
+type Phase =
+  | "loading"
+  | "sos"
+  | "sos-exit"
+  | "pick"
+  | "run"
+  | "outcome"
+  | "choose"
+  | "nourish"
+  | "midpoint"
+  | "respawn"
+  | "learning"
+  | "closed"
+  | "done";
 type Mode = "sos" | "notice" | "open";
 type CueAnswer = "me" | "not-me" | "good";
+type Choice = "eat" | "swap" | "delay";
+
+// SOS entry creation must be idempotent across remount/refresh: the
+// in-flight entry id is kept in sessionStorage, so a refresh of the SOS
+// screen reuses the same journal entry instead of adding a second one.
+// The guard is cleared when the flow reaches an exit, so a later, genuine
+// SOS tap starts a fresh entry.
+const SOS_GUARD_KEY = "pn.sosEntry";
+
+async function getOrCreateSosEntry(): Promise<JournalEntry> {
+  try {
+    const raw = sessionStorage.getItem(SOS_GUARD_KEY);
+    if (raw) {
+      const guard = JSON.parse(raw) as { id: string; at: number };
+      if (Date.now() - guard.at < 6 * 60 * 60 * 1000) {
+        const found = await getEntry(guard.id).catch(() => null);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // No usable guard — create below.
+  }
+  const created = await addEntry({ source: "sos" });
+  try {
+    sessionStorage.setItem(SOS_GUARD_KEY, JSON.stringify({ id: created.id, at: Date.now() }));
+  } catch {
+    // sessionStorage unavailable — the entry still exists, just unguarded.
+  }
+  return created;
+}
+
+function clearSosGuard() {
+  try {
+    sessionStorage.removeItem(SOS_GUARD_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
 
 const SOS_CONTEXTS = [
   "Watching TV / shows",
@@ -82,6 +134,13 @@ export default function PauseClient() {
   const [sosContext, setSosContext] = useState<string | null>(null);
   const [sosNeed, setSosNeed] = useState<Need | null>(null);
 
+  // Day 4: Choose → (Nourish Menu | midpoint) → respawn → learning
+  const [shieldPlan, setShieldPlan] = useState<ShieldPlan | null>(null);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
+  const resetAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [learningText, setLearningText] = useState("");
+  const [learningSaved, setLearningSaved] = useState<string | null>(null);
+
   const initRef = useRef(false);
 
   // ---------- init ----------
@@ -94,7 +153,7 @@ export default function PauseClient() {
     (async () => {
       if (isSos) {
         setMode("sos");
-        const created = await addEntry({ source: "sos" });
+        const created = await getOrCreateSosEntry();
         setEntry(created);
         setTool(toolById("urge-surfing"));
         setCoping("Urge Surfing");
@@ -159,6 +218,7 @@ export default function PauseClient() {
     if (answer === "me") {
       startRun(toolById("urge-surfing"));
     } else {
+      clearSosGuard();
       setExitKind(answer);
       setPhase("sos-exit");
     }
@@ -227,8 +287,67 @@ export default function PauseClient() {
       }
       const updated = await updateEntry(entry.id, patch).catch(() => null);
       if (updated) setEntry(updated);
+      setPhase("choose");
+      return;
     }
     setPhase("done");
+  }
+
+  // ---------- Day 4: Choose ----------
+
+  // Load the Shield Plan when the Choose step opens (Nourish Menu source).
+  useEffect(() => {
+    if (phase !== "choose" || shieldPlan) return;
+    getShieldPlan()
+      .then(setShieldPlan)
+      .catch(() => setShieldPlan(null));
+  }, [phase, shieldPlan]);
+
+  async function choose(choice: Choice) {
+    if (entry) {
+      const updated = await updateEntry(entry.id, { choice }).catch(() => null);
+      if (updated) setEntry(updated);
+    }
+    if (choice === "eat") {
+      setPhase("midpoint");
+    } else if (choice === "swap") {
+      setPhase("nourish");
+    } else {
+      void enterRespawn();
+    }
+  }
+
+  async function enterRespawn() {
+    try {
+      const reset = await getCue("reset");
+      if (reset) setResetUrl(URL.createObjectURL(reset.blob));
+    } catch {
+      // No reset line — the respawn screen is complete in text.
+    }
+    setPhase("respawn");
+  }
+
+  // Respawn: play the reset line once when the screen opens (falls back to
+  // the "Hear my reset line" exit if the browser wants a tap first).
+  useEffect(() => {
+    if (phase !== "respawn" || !resetUrl) return;
+    const audio = new Audio(resetUrl);
+    resetAudioRef.current = audio;
+    audio.play().catch(() => {});
+    return () => {
+      audio.pause();
+    };
+  }, [phase, resetUrl]);
+
+  async function saveLearning() {
+    const text = learningText.trim();
+    if (entry && text) {
+      const updated = await updateEntry(entry.id, { learning: text }).catch(() => null);
+      if (updated) setEntry(updated);
+      setLearningSaved(text);
+    }
+    clearSosGuard();
+    setPhase("closed");
   }
 
   // ---------- derived runner display ----------
@@ -563,12 +682,247 @@ export default function PauseClient() {
             <p className="mt-3">
               <button
                 type="button"
-                onClick={() => setPhase("done")}
+                onClick={() => setPhase(entry ? "choose" : "done")}
                 className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
               >
                 Skip — just finish
               </button>
             </p>
+          </div>
+        </div>
+      )}
+
+      {phase === "choose" && (
+        <div className="mt-8">
+          <h2 className="text-center text-2xl font-bold text-stone-900">You paused. Now it&apos;s your call.</h2>
+          {deltaKnown && (
+            <p className="mt-3 text-center text-lg font-semibold text-stone-900">
+              {urgeBefore} → {urgeAfter} — the pause did its part. The choice is yours.
+            </p>
+          )}
+          <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
+            Eat it, swap it, or delay it a few minutes. All three count. Nothing here is scored.
+          </p>
+          <div className="mt-8 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => choose("eat")}
+              className="rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+            >
+              Eat it
+            </button>
+            <button
+              type="button"
+              onClick={() => choose("swap")}
+              className="rounded-full border border-stone-300 bg-white px-8 py-4 text-lg font-semibold text-stone-800"
+            >
+              Swap
+            </button>
+            <button
+              type="button"
+              onClick={() => choose("delay")}
+              className="rounded-full border border-stone-300 bg-white px-8 py-4 text-lg font-semibold text-stone-800"
+            >
+              Delay
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "nourish" && (
+        <div className="mt-8">
+          <h2 className="text-center text-2xl font-bold text-stone-900">Your Nourish Menu</h2>
+          <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
+            The swaps you stocked for moments like this — yours, chosen at a calm time.
+          </p>
+          {entry?.plannedResponse && (
+            <div className="mt-6 rounded-2xl border-2 border-[#2f5d3a] bg-[#e7efe3] p-5 shadow-sm">
+              <p className="text-sm font-semibold tracking-wide text-[#2f5d3a] uppercase">
+                Your plan for this moment
+              </p>
+              <p className="mt-1 text-lg font-semibold text-stone-900">{entry.plannedResponse}</p>
+            </div>
+          )}
+          {shieldPlan && shieldPlan.triggerOptions.some((t) => t.options.length > 0) ? (
+            <div className="mt-4 flex flex-col gap-3">
+              {shieldPlan.triggerOptions
+                .filter((t) => t.options.length > 0)
+                .map((t) => (
+                  <div key={t.trigger} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+                    <p className="font-semibold text-stone-900">{t.trigger}</p>
+                    <ul className="mt-2 flex flex-col gap-1 text-stone-700">
+                      {t.options.map((o) => (
+                        <li key={o}>• {o}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            !entry?.plannedResponse && (
+              <p className="mx-auto mt-6 max-w-md text-center leading-relaxed text-stone-600">
+                Nothing is stocked yet. You can add your own swaps in your{" "}
+                <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+                  Shield Plan
+                </Link>{" "}
+                at a calm time — they will be waiting here.
+              </p>
+            )
+          )}
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={() => void enterRespawn()}
+              className="rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+            >
+              That&apos;s my swap
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "midpoint" && (
+        <div className="mt-8 text-center">
+          <h2 className="text-2xl font-bold text-stone-900">Eating it — on purpose.</h2>
+          <p className="mx-auto mt-3 max-w-md leading-relaxed text-stone-600">
+            That&apos;s a real choice, and it counts. One optional check, partway through:
+          </p>
+          <p className="mt-8 text-lg font-medium text-stone-900">
+            Still hungry, still enjoying it, both, or neither?
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {["Still hungry", "Still enjoying it", "Both", "Neither"].map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => void enterRespawn()}
+                className={`${chipBase} px-5 py-3 text-base ${chipIdle}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-5">
+            <button
+              type="button"
+              onClick={() => void enterRespawn()}
+              className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
+            >
+              Skip this check
+            </button>
+          </p>
+        </div>
+      )}
+
+      {phase === "respawn" && (
+        <div className="mt-10 text-center">
+          <h2 className="text-3xl font-bold text-stone-900">Checkpoint saved. Nothing reset.</h2>
+          <p className="mx-auto mt-4 max-w-md leading-relaxed text-stone-600">
+            You paused before you chose — that&apos;s the rep. One miss doesn&apos;t change the pattern.
+          </p>
+          {resetUrl && (
+            <p className="mt-3 text-sm text-stone-600">Your reset line, in your own voice.</p>
+          )}
+          <div className="mt-8 flex flex-col items-center gap-3">
+            {resetUrl && (
+              <button
+                type="button"
+                onClick={() => resetAudioRef.current?.play().catch(() => {})}
+                className="w-full max-w-md rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+              >
+                ▶ Hear my reset line
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setPhase("learning")}
+              className={`w-full max-w-md rounded-full px-8 py-4 text-lg font-semibold ${
+                resetUrl
+                  ? "border border-stone-300 bg-white text-stone-800"
+                  : "bg-[#2f5d3a] text-white shadow-sm transition hover:bg-[#274c30]"
+              }`}
+            >
+              Log one line in my words
+            </button>
+            <Link
+              href="/"
+              onClick={clearSosGuard}
+              className="w-full max-w-md rounded-full border border-stone-300 bg-white px-8 py-4 text-lg font-semibold text-stone-800"
+            >
+              Just close
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {phase === "learning" && (
+        <div className="mt-8">
+          <h2 className="text-center text-2xl font-bold text-stone-900">
+            Is there one thing you&apos;d like Pause &amp; Nourish to remember?
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
+            One line, in your words. It stays on this device, attached to this moment.
+          </p>
+          <textarea
+            value={learningText}
+            onChange={(e) => setLearningText(e.target.value)}
+            rows={3}
+            maxLength={300}
+            className="mt-6 w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none"
+            placeholder="In my words…"
+            aria-label="One thing to remember"
+          />
+          <div className="mt-6 text-center">
+            <button
+              type="button"
+              onClick={saveLearning}
+              disabled={!learningText.trim()}
+              className="rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30] disabled:opacity-40"
+            >
+              Remember this
+            </button>
+            <p className="mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  clearSosGuard();
+                  setPhase("closed");
+                }}
+                className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
+              >
+                Skip
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {phase === "closed" && (
+        <div className="mt-10 text-center">
+          <h2 className="text-3xl font-bold text-stone-900">Saved.</h2>
+          {learningSaved && (
+            <p className="mx-auto mt-3 max-w-md leading-relaxed text-stone-600">
+              Remembered, in your words: <span className="font-medium text-stone-900">&ldquo;{learningSaved}&rdquo;</span>
+            </p>
+          )}
+          <p className="mx-auto mt-3 max-w-md leading-relaxed text-stone-600">
+            Whatever you chose, you chose it on purpose — after a pause. That&apos;s the pattern
+            you&apos;re building.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link
+              href="/"
+              className="rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+            >
+              Back home
+            </Link>
+            <button
+              type="button"
+              onClick={() => setPhase("pick")}
+              className="rounded-full border border-stone-300 bg-white px-8 py-4 text-lg font-semibold text-stone-800"
+            >
+              Another pause
+            </button>
           </div>
         </div>
       )}
@@ -610,7 +964,7 @@ export default function PauseClient() {
             </button>
           </div>
           <p className="mt-6 text-sm text-stone-600">
-            Eat, swap, or delay — all three are fine. Choose logging arrives with the next build.
+            Eat, swap, or delay — all three are fine, and all three count.
           </p>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { deleteCue, getCue, saveCue } from "@/lib/journal";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { deleteCue, getCue, saveCue, type CueKind } from "@/lib/journal";
 
 // The locked cue scripts (Second Brain + Voice Brief, adopted 2026-10-27,
 // Bob's lock 2026-10-28). A is the editable default suggestion — every
@@ -9,6 +9,9 @@ import { deleteCue, getCue, saveCue } from "@/lib/journal";
 const SCRIPT_A =
   "Okay — couch, TV on. I want to feel good tomorrow morning — that's my why. Is this hunger, or the movie?";
 const SCRIPT_C = "I'm in it right now. I want to be kind to myself tomorrow. Hunger, or habit?";
+
+// Day 4: the reset line's editable default script (Day 4 spec v2.0 §2.4).
+const RESET_DEFAULT = "Okay, that happened. I'm okay. Next meal as normal.";
 
 function scriptB(whyLine: string): string {
   const why = whyLine.trim() || "I want to feel good tomorrow morning";
@@ -19,9 +22,31 @@ const MAX_SECONDS = 15;
 
 type CueState = "loading" | "empty" | "recording" | "saved" | "unsupported" | "denied";
 
-export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
+interface SlotCopy {
+  intro: string;
+  scriptLabel: string;
+  recordLabel: string;
+  recordHint: string;
+  savedMessage: string;
+  savedFootnote: string;
+  deleteLabel: string;
+}
+
+// One recording slot (Day 3 cue / Day 4 reset line). Same mechanics and
+// storage discipline for both; only the words and the `kind` differ.
+function RecordingSlot({
+  kind,
+  initialScript,
+  copy,
+  scriptExtras,
+}: {
+  kind: CueKind;
+  initialScript: string;
+  copy: SlotCopy;
+  scriptExtras?: (setScript: (s: string) => void) => ReactNode;
+}) {
   const [state, setState] = useState<CueState>("loading");
-  const [script, setScript] = useState(SCRIPT_A);
+  const [script, setScript] = useState(initialScript);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
@@ -39,7 +64,7 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
 
   useEffect(() => {
     let live = true;
-    getCue()
+    getCue(kind)
       .then((cue) => {
         if (!live) return;
         if (cue) {
@@ -63,7 +88,7 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [kind]);
 
   async function startRecording() {
     try {
@@ -82,7 +107,7 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         if (blob.size > 0) {
           try {
-            await saveCue(blob);
+            await saveCue(blob, kind);
           } catch {
             // Preview still works this session even if storage failed.
           }
@@ -114,7 +139,7 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
 
   async function removeCue() {
     try {
-      await deleteCue();
+      await deleteCue(kind);
     } catch {
       // Already gone is fine.
     }
@@ -124,19 +149,17 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
 
   const chipClass =
     "rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]";
+  const scriptId = `script-${kind}`;
 
   return (
     <div>
-      <p className="mt-1 text-sm leading-relaxed text-stone-600">
-        This is the voice that reaches you in a moment. Pick what sounds most like you on a good day.
-        On this device only — it never leaves your phone.
-      </p>
+      <p className="mt-1 text-sm leading-relaxed text-stone-600">{copy.intro}</p>
 
-      {state === "loading" && <p className="mt-4 text-stone-600">Checking for a saved cue…</p>}
+      {state === "loading" && <p className="mt-4 text-stone-600">Checking for a saved recording…</p>}
 
       {state === "unsupported" && (
         <p className="mt-4 leading-relaxed text-stone-600">
-          This browser can&apos;t record audio, so the cue can&apos;t be set up here. The app works fine
+          This browser can&apos;t record audio, so this can&apos;t be set up here. The app works fine
           without one — recording is calm-time setup, and you can add it later from a browser that
           supports it.
         </p>
@@ -146,7 +169,7 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
         <div className="mt-4">
           <p className="leading-relaxed text-stone-600">
             The microphone is off for this site, so nothing was recorded. You can allow it in your
-            browser&apos;s site settings and try again — or skip the cue entirely. The app works fine
+            browser&apos;s site settings and try again — or skip this entirely. The app works fine
             without one.
           </p>
           <button type="button" className={`${chipClass} mt-3`} onClick={() => setState("empty")}>
@@ -157,28 +180,18 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
 
       {(state === "empty" || state === "recording" || state === "saved") && (
         <>
-          <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor="cue-script">
-            Words to say — edit them first. Your scene is yours.
+          <label className="mt-4 block text-sm font-medium text-stone-700" htmlFor={scriptId}>
+            {copy.scriptLabel}
           </label>
           <textarea
-            id="cue-script"
+            id={scriptId}
             value={script}
             onChange={(e) => setScript(e.target.value)}
             rows={3}
             maxLength={300}
             className="mt-2 w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none"
           />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_A)}>
-              Starter words
-            </button>
-            <button type="button" className={chipClass} onClick={() => setScript(scriptB(whyLine))}>
-              Say it with my why
-            </button>
-            <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_C)}>
-              Softer version
-            </button>
-          </div>
+          {scriptExtras && <div className="mt-2 flex flex-wrap gap-2">{scriptExtras(setScript)}</div>}
 
           {state === "empty" && (
             <div className="mt-5">
@@ -187,11 +200,9 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
                 onClick={startRecording}
                 className="rounded-full bg-[#2f5d3a] px-6 py-3 font-semibold text-white transition hover:bg-[#274c30]"
               >
-                ● Record my cue
+                {copy.recordLabel}
               </button>
-              <p className="mt-2 text-sm text-stone-600">
-                About 10 seconds, in a normal voice, like you&apos;re talking yourself through it.
-              </p>
+              <p className="mt-2 text-sm text-stone-600">{copy.recordHint}</p>
             </div>
           )}
 
@@ -212,26 +223,79 @@ export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
 
           {state === "saved" && previewUrl && (
             <div className="mt-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-              <p className="font-medium text-stone-900">Your cue is saved on this device.</p>
+              <p className="font-medium text-stone-900">{copy.savedMessage}</p>
               <audio controls src={previewUrl} className="mt-3 w-full">
-                Your browser can&apos;t play the cue back here.
+                Your browser can&apos;t play this back here.
               </audio>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" className={chipClass} onClick={() => setState("empty")}>
                   Re-record
                 </button>
                 <button type="button" className={chipClass} onClick={removeCue}>
-                  Delete cue
+                  {copy.deleteLabel}
                 </button>
               </div>
-              <p className="mt-2 text-sm text-stone-600">
-                Re-recording replaces the saved cue when you stop. This is the voice that plays when
-                you tap SOS.
-              </p>
+              <p className="mt-2 text-sm text-stone-600">{copy.savedFootnote}</p>
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+const chipClass =
+  "rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]";
+
+export default function VoiceCueSetup({ whyLine }: { whyLine: string }) {
+  return (
+    <RecordingSlot
+      kind="cue"
+      initialScript={SCRIPT_A}
+      copy={{
+        intro:
+          "This is the voice that reaches you in a moment. Pick what sounds most like you on a good day. On this device only — it never leaves your phone.",
+        scriptLabel: "Words to say — edit them first. Your scene is yours.",
+        recordLabel: "● Record my cue",
+        recordHint: "About 10 seconds, in a normal voice, like you're talking yourself through it.",
+        savedMessage: "Your cue is saved on this device.",
+        savedFootnote:
+          "Re-recording replaces the saved cue when you stop. This is the voice that plays when you tap SOS.",
+        deleteLabel: "Delete cue",
+      }}
+      scriptExtras={(setScript) => (
+        <>
+          <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_A)}>
+            Starter words
+          </button>
+          <button type="button" className={chipClass} onClick={() => setScript(scriptB(whyLine))}>
+            Say it with my why
+          </button>
+          <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_C)}>
+            Softer version
+          </button>
+        </>
+      )}
+    />
+  );
+}
+
+export function ResetLineSetup() {
+  return (
+    <RecordingSlot
+      kind="reset"
+      initialScript={RESET_DEFAULT}
+      copy={{
+        intro:
+          "A second, shorter recording — for right after you eat. It plays on the checkpoint screen, in your own voice. On this device only.",
+        scriptLabel: "Words to say — edit them first.",
+        recordLabel: "● Record my reset line",
+        recordHint: "About 5 seconds is plenty — short is the point here.",
+        savedMessage: "Your reset line is saved on this device.",
+        savedFootnote:
+          "Re-recording replaces the saved reset line when you stop. It plays after you choose to eat.",
+        deleteLabel: "Delete reset line",
+      }}
+    />
   );
 }

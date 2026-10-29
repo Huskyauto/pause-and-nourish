@@ -45,13 +45,23 @@ export interface JournalEntry {
   source: "notice" | "sos";
   urgeAfter: number | null; // 0–5, captured on the outcome screen (Day 3)
   cueAnswer: "me" | "not-me" | "good" | null; // SOS cue answer tap (Day 3)
+  learning: string | null; // Day 4: save-one-learning — a tier-1 user statement, verbatim
 }
+
+export type CueKind = "cue" | "reset";
+export type VoiceChoice = "own" | "phone" | "later";
+export type Directness = "gentle" | "straight" | "short";
 
 export interface ShieldPlan {
   triggerOptions: { trigger: string; options: string[] }[];
   dangerPlaces: string[];
   thoughtPairs: { negative: string; positive: string }[];
   whyLine: string; // the user's own "why", shown large on the SOS screen
+  // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
+  ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
+  voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later
+  directness?: Directness | null; // currently effective buddy directness
+  directnessPending?: { level: Directness; effectiveFrom: string } | null; // §2.6: weakening lands next day
 }
 
 export const EMPTY_SHIELD_PLAN: ShieldPlan = {
@@ -67,11 +77,17 @@ const JOURNAL_STORE = "journal";
 const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
 const CUE_STORE = "voiceCue";
-const CUE_KEY = "cue";
 
 const LS_JOURNAL = "pn.journal";
 const LS_SHIELD = "pn.shieldPlan";
 const LS_CUE = "pn.voiceCue";
+const LS_RESET_CUE = "pn.voiceResetCue";
+
+// Cue records are keyed by kind ("cue" | "reset"). The Day 3 cue already
+// lives under key "cue", so the kind key IS the Day 3 key — no migration.
+function lsCueKey(kind: CueKind): string {
+  return kind === "reset" ? LS_RESET_CUE : LS_CUE;
+}
 
 // ---------- IndexedDB backend ----------
 
@@ -159,26 +175,26 @@ interface CueRecord {
   recordedAt: string;
 }
 
-async function idbSaveCue(rec: CueRecord): Promise<void> {
+async function idbSaveCue(rec: CueRecord, kind: CueKind): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(CUE_STORE, "readwrite");
-  await idbRequest(tx.objectStore(CUE_STORE).put({ key: CUE_KEY, ...rec }));
+  await idbRequest(tx.objectStore(CUE_STORE).put({ key: kind, kind, ...rec }));
   db.close();
 }
 
-async function idbGetCue(): Promise<CueRecord | null> {
+async function idbGetCue(kind: CueKind): Promise<CueRecord | null> {
   const db = await openDb();
   const tx = db.transaction(CUE_STORE, "readonly");
-  const rec = await idbRequest(tx.objectStore(CUE_STORE).get(CUE_KEY));
+  const rec = await idbRequest(tx.objectStore(CUE_STORE).get(kind));
   db.close();
   const found = rec as (CueRecord & { key: string }) | undefined;
   return found?.blob ? { blob: found.blob, mimeType: found.mimeType, recordedAt: found.recordedAt } : null;
 }
 
-async function idbDeleteCue(): Promise<void> {
+async function idbDeleteCue(kind: CueKind): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(CUE_STORE, "readwrite");
-  await idbRequest(tx.objectStore(CUE_STORE).delete(CUE_KEY));
+  await idbRequest(tx.objectStore(CUE_STORE).delete(kind));
   db.close();
 }
 
@@ -238,6 +254,7 @@ export async function addEntry(input: Partial<JournalEntry>): Promise<JournalEnt
     source: input.source ?? "notice",
     urgeAfter: input.urgeAfter ?? null,
     cueAnswer: input.cueAnswer ?? null,
+    learning: input.learning ?? null,
   };
   await withFallback(
     () => idbAddEntry(entry),
@@ -302,32 +319,33 @@ export async function getShieldPlan(): Promise<ShieldPlan> {
 
 // ---------- Voice cue public API ----------
 
-export async function saveCue(blob: Blob): Promise<void> {
+export async function saveCue(blob: Blob, kind: CueKind = "cue"): Promise<void> {
   const rec: CueRecord = {
     blob,
     mimeType: blob.type || "audio/webm",
     recordedAt: new Date().toISOString(),
   };
   await withFallback(
-    () => idbSaveCue(rec),
+    () => idbSaveCue(rec, kind),
     () => {
       // localStorage cannot hold a Blob — store a data URL instead.
       const reader = new FileReader();
-      reader.onload = () => lsWrite(LS_CUE, { dataUrl: String(reader.result), recordedAt: rec.recordedAt });
+      reader.onload = () =>
+        lsWrite(lsCueKey(kind), { dataUrl: String(reader.result), recordedAt: rec.recordedAt });
       reader.readAsDataURL(blob);
     },
   );
 }
 
-export async function getCue(): Promise<CueRecord | null> {
+export async function getCue(kind: CueKind = "cue"): Promise<CueRecord | null> {
   if (typeof indexedDB !== "undefined") {
     try {
-      return await idbGetCue();
+      return await idbGetCue(kind);
     } catch {
       // Fall through to the localStorage copy.
     }
   }
-  const stored = lsRead<{ dataUrl?: string; recordedAt?: string }>(LS_CUE, {});
+  const stored = lsRead<{ dataUrl?: string; recordedAt?: string }>(lsCueKey(kind), {});
   if (!stored.dataUrl) return null;
   try {
     // fetch() on a data URL resolves to a Blob of the recorded audio.
@@ -339,18 +357,21 @@ export async function getCue(): Promise<CueRecord | null> {
   }
 }
 
-export async function hasCue(): Promise<boolean> {
-  return (await getCue()) !== null;
+export async function hasCue(kind: CueKind = "cue"): Promise<boolean> {
+  return (await getCue(kind)) !== null;
 }
 
-export async function deleteCue(): Promise<void> {
-  await withFallback(idbDeleteCue, () => {
-    try {
-      localStorage.removeItem(LS_CUE);
-    } catch {
-      // Nothing to delete.
-    }
-  });
+export async function deleteCue(kind: CueKind = "cue"): Promise<void> {
+  await withFallback(
+    () => idbDeleteCue(kind),
+    () => {
+      try {
+        localStorage.removeItem(lsCueKey(kind));
+      } catch {
+        // Nothing to delete.
+      }
+    },
+  );
 }
 
 export async function saveShieldPlan(plan: ShieldPlan): Promise<void> {

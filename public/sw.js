@@ -1,4 +1,4 @@
-const CACHE = "pause-and-nourish-v4";
+const CACHE = "pause-and-nourish-v5";
 const CORE = ["/", "/check-in", "/pause", "/dashboard", "/shield", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

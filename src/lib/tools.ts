@@ -3,6 +3,8 @@
 // the library's efficacy claims do not port — no unverified numbers here).
 // The Urge Surfing beats are the adopted copy (Meta AI Day 2 copy job,
 // locked 2026-10-27): 7 beats at 0 / 12 / 25 / 40 / 55 / 70 / 85 seconds.
+// Day 4 adds one defusion beat at 47s — "This is a thought, not an order"
+// (dashboard v2.1, via the adopted Grok review package).
 
 import type { Need } from "./journal";
 
@@ -37,6 +39,7 @@ export const PAUSE_TOOLS: PauseTool[] = [
         { at: 12, text: "Notice what's here — urge, tightness, thoughts. Just notice." },
         { at: 25, text: "It's okay that it feels strong. That's what urges do." },
         { at: 40, text: "Watch it — does it get bigger, smaller, move?" },
+        { at: 47, text: "This is a thought, not an order." },
         { at: 55, text: "You don't have to do anything about it right now." },
         { at: 70, text: "Urges come up, hang around, then come back down. Let's ride this one." },
         { at: 85, text: "You're still here. That's a lot. See what feels next." },

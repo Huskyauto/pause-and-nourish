@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { EMPTY_SHIELD_PLAN, getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
-import VoiceCueSetup from "./VoiceCueSetup";
+import VoiceCueSetup, { ResetLineSetup } from "./VoiceCueSetup";
+import {
+  applyDueDirectness,
+  DirectnessSection,
+  IfThenSection,
+  VoiceChoiceSection,
+} from "./ShieldDay4";
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
@@ -23,7 +29,11 @@ export default function ShieldPage() {
     let live = true;
     getShieldPlan()
       .then((p) => {
-        if (live) setPlan(p);
+        if (!live) return;
+        // A pending directness change that has come due takes effect (§2.6).
+        const { plan: resolved, changed } = applyDueDirectness(p);
+        setPlan(resolved);
+        if (changed) saveShieldPlan(resolved).catch(() => {});
       })
       .catch(() => {
         if (live) setPlan({ ...EMPTY_SHIELD_PLAN });
@@ -233,8 +243,28 @@ export default function ShieldPage() {
       </section>
 
       <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">My plan, in one line</h2>
+        <IfThenSection plan={plan} onUpdate={update} />
+      </section>
+
+      <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your second-brain voice</h2>
         <VoiceCueSetup whyLine={plan.whyLine} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
+        <ResetLineSetup />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">How your second brain reaches you</h2>
+        <VoiceChoiceSection plan={plan} onUpdate={update} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">How should your second brain talk to you?</h2>
+        <DirectnessSection plan={plan} onUpdate={update} />
       </section>
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
