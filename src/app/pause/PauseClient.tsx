@@ -14,6 +14,7 @@ import {
   type ShieldPlan,
 } from "@/lib/journal";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
+import { speakLine } from "@/lib/speak";
 
 // Day 3 pause flow, voice-first:
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
@@ -47,6 +48,12 @@ type Choice = "eat" | "swap" | "delay";
 // The guard is cleared when the flow reaches an exit, so a later, genuine
 // SOS tap starts a fresh entry.
 const SOS_GUARD_KEY = "pn.sosEntry";
+
+// The Fish why-line supplement fires at most once per SOS entry: the id
+// of the entry it has spoken for is kept beside the entry guard, so a
+// refresh of the SOS screen (which reuses the same entry) never speaks
+// the line a second time.
+const SOS_SPEAK_KEY = "pn.sosFishSpoken";
 
 async function getOrCreateSosEntry(): Promise<JournalEntry> {
   try {
@@ -117,6 +124,7 @@ export default function PauseClient() {
   const [cueUrl, setCueUrl] = useState<string | null>(null);
   const [cueNeedsTap, setCueNeedsTap] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const sosSpeakRef = useRef(false);
   const [exitKind, setExitKind] = useState<"not-me" | "good">("good");
 
   // Runner
@@ -138,6 +146,7 @@ export default function PauseClient() {
   const [shieldPlan, setShieldPlan] = useState<ShieldPlan | null>(null);
   const [resetUrl, setResetUrl] = useState<string | null>(null);
   const resetAudioRef = useRef<HTMLAudioElement | null>(null);
+  const respawnSpeakRef = useRef(false);
   const [learningText, setLearningText] = useState("");
   const [learningSaved, setLearningSaved] = useState<string | null>(null);
 
@@ -191,15 +200,57 @@ export default function PauseClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- SOS: Fish supplement — the why line, spoken once ----------
+  // The recorded cue stays the primary voice. After it finishes, the why
+  // line is spoken once in the user's cloned voice (Fish, via /api/speak).
+  // Guarded twice: a ref for this mount, and a sessionStorage flag pinned
+  // to the SOS entry so a refresh never speaks it twice. An empty why
+  // line means no call at all, and every failure is silent — the line is
+  // already on screen, large.
+  function speakSosWhyLine() {
+    if (sosSpeakRef.current) return;
+    const line = whyLine.trim();
+    if (!line || !entry) return;
+    try {
+      const raw = sessionStorage.getItem(SOS_SPEAK_KEY);
+      if (raw) {
+        const flag = JSON.parse(raw) as { id: string; at: number };
+        if (flag.id === entry.id && Date.now() - flag.at < 6 * 60 * 60 * 1000) return;
+      }
+      sessionStorage.setItem(
+        SOS_SPEAK_KEY,
+        JSON.stringify({ id: entry.id, at: Date.now() }),
+      );
+    } catch {
+      // sessionStorage unavailable — the ref guard still holds this mount.
+    }
+    sosSpeakRef.current = true;
+    void speakLine(line);
+  }
+
   // ---------- SOS: play the cue once when the screen opens ----------
   useEffect(() => {
     if (phase !== "sos" || !cueUrl) return;
     const audio = new Audio(cueUrl);
     audioRef.current = audio;
+    const onEnded = () => speakSosWhyLine();
+    audio.addEventListener("ended", onEnded);
     audio.play().catch(() => setCueNeedsTap(true));
     return () => {
+      audio.removeEventListener("ended", onEnded);
       audio.pause();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, cueUrl]);
+
+  // SOS with no recorded cue: speak the why line shortly after the plain
+  // screen shows — the screen never waits on the voice. (With a cue, its
+  // "ended" event above is the trigger instead.)
+  useEffect(() => {
+    if (phase !== "sos" || cueUrl) return;
+    const t = setTimeout(() => speakSosWhyLine(), 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, cueUrl]);
 
   // ---------- SOS: auto-start Urge Surfing if no tap in 12s ----------
@@ -327,16 +378,41 @@ export default function PauseClient() {
     setPhase("respawn");
   }
 
+  // ---------- Respawn: Fish supplement — the checkpoint line, once ----------
+  // The recorded reset line stays the primary voice. After it finishes,
+  // the locked checkpoint line is spoken once in the user's cloned voice.
+  // Guarded by a ref — at most once per mount, and the respawn screen is
+  // reached once per flow. Silent on failure: the line is the screen's
+  // headline already.
+  function speakRespawnLine() {
+    if (respawnSpeakRef.current) return;
+    respawnSpeakRef.current = true;
+    void speakLine("Checkpoint saved. Nothing reset.");
+  }
+
   // Respawn: play the reset line once when the screen opens (falls back to
   // the "Hear my reset line" exit if the browser wants a tap first).
   useEffect(() => {
     if (phase !== "respawn" || !resetUrl) return;
     const audio = new Audio(resetUrl);
     resetAudioRef.current = audio;
+    const onEnded = () => speakRespawnLine();
+    audio.addEventListener("ended", onEnded);
     audio.play().catch(() => {});
     return () => {
+      audio.removeEventListener("ended", onEnded);
       audio.pause();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, resetUrl]);
+
+  // Respawn with no reset recording: speak the checkpoint line shortly
+  // after the screen shows instead.
+  useEffect(() => {
+    if (phase !== "respawn" || resetUrl) return;
+    const t = setTimeout(() => speakRespawnLine(), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, resetUrl]);
 
   async function saveLearning() {
