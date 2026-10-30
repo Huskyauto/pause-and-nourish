@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { EMPTY_SHIELD_PLAN, getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
 import VoiceCueSetup, { ResetLineSetup } from "./VoiceCueSetup";
@@ -25,6 +25,12 @@ export default function ShieldPage() {
   const [newNegative, setNewNegative] = useState("");
   const [newPositive, setNewPositive] = useState("");
   const [cueVersion, setCueVersion] = useState(0);
+  // Fish voice-out test ("Hear my voice say it", under Your voice below):
+  // one fixed line through /api/speak, played in the browser.
+  const [speakState, setSpeakState] = useState<"idle" | "loading" | "error">("idle");
+  const [speakNote, setSpeakNote] = useState("");
+  const speakAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speakUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -50,6 +56,45 @@ export default function ShieldPage() {
       await saveShieldPlan(nextPlan);
     } catch {
       // Saved in state; storage failure must not break setup.
+    }
+  }
+
+  async function hearMyVoice() {
+    setSpeakState("loading");
+    setSpeakNote("");
+    try {
+      const res = await fetch("/api/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: "This is your voice, on demand. Same voice that talks you through the moment.",
+        }),
+      });
+      if (!res.ok) {
+        let code = "";
+        try {
+          code = ((await res.json()) as { error?: string }).error ?? "";
+        } catch {
+          // Non-JSON error body — the generic note below covers it.
+        }
+        setSpeakNote(
+          code === "voice_not_configured"
+            ? "Your Fish key isn't in Vercel yet — once it's pasted in, this button speaks."
+            : "Your voice couldn't speak just now — try again in a moment.",
+        );
+        setSpeakState("error");
+        return;
+      }
+      const blob = await res.blob();
+      if (speakUrlRef.current) URL.revokeObjectURL(speakUrlRef.current);
+      speakUrlRef.current = URL.createObjectURL(blob);
+      if (!speakAudioRef.current) speakAudioRef.current = new Audio();
+      speakAudioRef.current.src = speakUrlRef.current;
+      await speakAudioRef.current.play();
+      setSpeakState("idle");
+    } catch {
+      setSpeakNote("Your voice couldn't speak just now — try again in a moment.");
+      setSpeakState("error");
     }
   }
 
@@ -95,6 +140,20 @@ export default function ShieldPage() {
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
         <VoiceCueSetup whyLine={plan.whyLine} onSavedChange={handleCueChange} />
+        <div className="mt-5">
+          <button
+            type="button"
+            onClick={hearMyVoice}
+            disabled={speakState === "loading"}
+            className="rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a] disabled:opacity-50"
+          >
+            {speakState === "loading" ? "Getting your voice…" : "Hear my voice say it"}
+          </button>
+          <p className="mt-2 text-sm text-stone-600">
+            Your cloned voice, on demand — the one that will talk you through a moment.
+          </p>
+          {speakNote && <p className="mt-2 text-sm text-stone-600">{speakNote}</p>}
+        </div>
       </section>
 
       <section className="mt-10">
