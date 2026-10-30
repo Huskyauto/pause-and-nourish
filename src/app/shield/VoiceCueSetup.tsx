@@ -27,6 +27,35 @@ function scriptB(whyLine: string): string {
 
 const MAX_SECONDS = 15;
 
+// Fail-open loudness check: decode a just-recorded blob and find its
+// peak amplitude. Returns null when decoding is unavailable or throws —
+// callers treat null as "no information," never as silence.
+async function blobPeakAmplitude(blob: Blob): Promise<number | null> {
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    const ctx = new Ctor();
+    try {
+      const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+      let peak = 0;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++) {
+          const v = data[i] < 0 ? -data[i] : data[i];
+          if (v > peak) peak = v;
+        }
+      }
+      return peak;
+    } finally {
+      ctx.close().catch(() => {});
+    }
+  } catch {
+    return null;
+  }
+}
+
 type CueState = "loading" | "empty" | "recording" | "saved" | "unsupported" | "denied";
 
 interface SlotCopy {
@@ -69,6 +98,7 @@ export function RecordingSlot({
   const [script, setScript] = useState(initialScript);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [silentWarning, setSilentWarning] = useState(false);
 
   const savedChangeRef = useRef(onSavedChange);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -148,12 +178,20 @@ export function RecordingSlot({
           setUrl(URL.createObjectURL(blob));
           setState("saved");
           if (stored) savedChangeRef.current?.(true, "save");
+          // A recording made while something else held the microphone
+          // (a call, another app) can come out silent and still save
+          // fine. Warn in plain words when the decoded audio is
+          // near-zero; the recording is kept either way, and a decode
+          // failure means no warning — never block on this check.
+          const peak = await blobPeakAmplitude(blob);
+          setSilentWarning(peak !== null && peak < 0.01);
         } else {
           setState("empty");
         }
       };
       recorder.start();
       setElapsed(0);
+      setSilentWarning(false);
       setState("recording");
       const startedAt = Date.now();
       timerRef.current = setInterval(() => {
@@ -276,6 +314,12 @@ export function RecordingSlot({
           {state === "saved" && previewUrl && (
             <div className="mt-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
               <p className="font-medium text-stone-900">{copy.savedMessage}</p>
+              {silentWarning && (
+                <p className="mt-2 leading-relaxed text-stone-600">
+                  That recording came out silent — your microphone may have been busy (for
+                  example, a call). Re-record when nothing else is using the mic.
+                </p>
+              )}
               <audio controls src={previewUrl} className="mt-3 w-full">
                 Your browser can&apos;t play this back here.
               </audio>

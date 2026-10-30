@@ -214,8 +214,28 @@ export function VoiceChoiceSection({
     if (cueUrl) {
       const audio = new Audio(cueUrl);
       audioRef.current = audio;
-      audio.play().catch(() => {});
-      setPreviewNote("That was your recording — your own voice, the one that plays in the moment.");
+      // Honest preview (same discipline as the SOS screen): the success
+      // note lands only once playback has actually started. If play()
+      // is rejected, say so plainly and point at the player with
+      // controls in "Your voice" just below — never claim a success
+      // the user didn't hear.
+      setPreviewNote("");
+      audio
+        .play()
+        .then(() => {
+          if (audioRef.current === audio) {
+            setPreviewNote(
+              "That was your recording — your own voice, the one that plays in the moment.",
+            );
+          }
+        })
+        .catch(() => {
+          if (audioRef.current === audio) {
+            setPreviewNote(
+              "That preview couldn't play just now. Your recording is saved — you can play it with the player in “Your voice” just below.",
+            );
+          }
+        });
       return;
     }
     if (plan.voiceChoice === "phone") {

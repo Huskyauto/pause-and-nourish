@@ -39,6 +39,7 @@ export default function Home() {
   const [justSaved, setJustSaved] = useState(false);
   const [editingVoice, setEditingVoice] = useState(false);
   const [cueUrl, setCueUrl] = useState<string | null>(null);
+  const [playNote, setPlayNote] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   function handleSavedChange(has: boolean, reason: "load" | "save" | "delete") {
@@ -88,7 +89,14 @@ export default function Home() {
       audioRef.current = new Audio(cueUrl);
     }
     audioRef.current.currentTime = 0;
-    audioRef.current.play().catch(() => {});
+    // Honest playback: if play() is rejected, say so in words instead
+    // of letting the tap land in silence.
+    setPlayNote("");
+    audioRef.current.play().catch(() => {
+      setPlayNote(
+        "Your voice didn't play just now — it's saved on this phone. Check the volume and tap play again.",
+      );
+    });
   }
 
   return (
@@ -172,6 +180,7 @@ export default function Home() {
                 </button>
               </div>
             </div>
+            {playNote && <p className="mt-3 text-sm text-stone-600">{playNote}</p>}
             {editingVoice && (
               <div className="mt-2 border-t border-stone-100 pt-2">
                 <RecordingSlot
