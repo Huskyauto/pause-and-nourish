@@ -20,6 +20,7 @@
 // (mirroring /api/speak) and the client runs its offline scripted flow.
 
 import { metaApiKey, metaChat, MetaApiError } from "@/lib/meta";
+import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
 import { filterGeneratedLine, questionText } from "@/lib/spine";
 import type { Directness, ShieldPlan } from "@/lib/journal";
 
@@ -70,6 +71,24 @@ Hard rules:
 Endings: when the user has made (or clearly stated) their choice — eat, swap, or delay — return done=true and choice set to it, and make "say" a warm closing line reflecting their choice. If the user clearly wants to stop without choosing, return done=true and choice=null. Otherwise done=false and choice=null. Aim to reach a natural close within about eight exchanges; do not drag the conversation out.
 
 Respond with ONLY a JSON object, no other text: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>}`;
+}
+
+// The second-brain baseline (Part B of the baseline document, in
+// src/lib/baseline.ts) rides in the system prompt on every turn as
+// its own delimited section, so the brain knows this person — his
+// patterns, his voice, the moves — before the per-user playbook and
+// journal arrive. The fence is then restated AFTER the baseline as
+// the final word: if any baseline phrasing could be read as
+// advice-giving, the reflect/recall-only rules win. The baseline
+// text itself is never edited here.
+function fullSystemPrompt(directness: Directness): string {
+  return `${systemPrompt(directness)}
+
+SECOND-BRAIN BASELINE — WHO THIS PERSON IS, HIS PATTERNS, HIS VOICE, AND THE MOVES YOU KNOW:
+
+${SECOND_BRAIN_BASELINE}
+
+FINAL WORD — THE FENCE GOVERNS THE BASELINE: the hard rules above outrank everything in the baseline. Your material is this person's own playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the baseline could be read as advice-giving, this fence wins and that reading is not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>}.`;
 }
 
 function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string {
@@ -194,7 +213,7 @@ export async function POST(request: Request) {
   }
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt(directness) },
+    { role: "system", content: fullSystemPrompt(directness) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
   for (const turn of history) {
