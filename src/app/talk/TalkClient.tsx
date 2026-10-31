@@ -1370,8 +1370,9 @@ export default function TalkClient() {
             now; either way the conversation just carries on.
           </p>
           <p className="mt-3 leading-relaxed text-stone-600">
-            Your answers are heard on this device and written into your journal here. Nothing is
-            scored.
+            Your answers are turned into words by your phone&apos;s speech service when it offers
+            one, and by the app&apos;s own transcription when it doesn&apos;t. It&apos;s the words
+            that get kept, here in your journal — the audio itself is not kept. Nothing is scored.
           </p>
           <button
             type="button"

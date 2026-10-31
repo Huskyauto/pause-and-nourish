@@ -18,7 +18,7 @@ Its centerpiece is **Talk It Through**: a two-way spoken conversation. The app a
 
 | Service | Endpoint in this repo | Job in the app |
 |---|---|---|
-| **Muse Voice Transcribe** (Meta Model API) | `POST /api/transcribe` | Turns each spoken answer in Talk It Through into text. Structured answers (the urge number, eat/swap/delay) are then parsed deterministically on-device — the model never infers them |
+| **Muse Voice Transcribe** (Meta Model API) | `POST /api/transcribe` | Fallback transcriber for Talk It Through: the phone's speech service turns most answers into words first (recognition-first), and an answer it can't take is recorded and transcribed here instead — the audio is not kept. Structured answers (the urge number, the eat / have-something-else / wait choice) are then parsed deterministically on-device — the model never infers them |
 | **Muse Spark** (Meta Model API) | `POST /api/converse` | Composes the companion's next question, and the spoken game plan, live in the moment, in the user's chosen directness. Reflect-only by system prompt, and every generated line passes an output filter — a line the filter rejects is never spoken (the app shows an honest can't-reach-the-brain state rather than faking a conversation); the plan itself is assembled from the user's own saved words, not generated |
 | **Muse Code** | — (build tool) | Used to build this app during the event |
 
@@ -28,7 +28,7 @@ Not in the code (roadmap, not shipped): Muse Wonder weekly review, Muse Image, S
 
 ## Privacy
 
-Local-first by design. Your check-ins and journal live **on your device** (IndexedDB). There is no account, no hosted database, and nothing to leak. Spoken answers and conversation state go to the Meta Model API through thin serverless functions (keys never ship to the browser) and are not stored server-side. Delete everything, any time, from inside the app (Your week → Delete everything — it clears the journal, your plan, and every voice recording on the device).
+Local-first by design. Your check-ins and journal live **on your device** (IndexedDB). There is no account, no hosted database, and nothing to leak. Spoken answers are turned into words by your phone's speech service when it offers one (on Android Chrome that service is generally run by Google), and otherwise by the app's own transcription; the audio itself is not kept — the words are what your journal holds. Conversation state goes to the Meta Model API through thin serverless functions (keys never ship to the browser) and is not stored server-side. Delete everything, any time, from inside the app (Your week → Delete everything — it clears the journal, your plan, and every voice recording on the device).
 
 ## Run it
 

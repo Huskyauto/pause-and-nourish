@@ -58,9 +58,15 @@ export async function speakLine(text: string, voice?: ProfileVoice): Promise<voi
 // Guided-action steps do NOT use this — they pace by design through
 // speakLineChecked/speakAloud exactly as before.
 
-// Split a line into sentences (terminators kept), then cap each
-// piece at the same ~280 chars the app's other chunking uses, so a
-// very long sentence still fits Fish's per-call limit.
+// Split a line into pipeline chunks. Chunk boundaries (refined
+// 2026-10-31, Fish credit discipline): the FIRST sentence ships
+// solo — its audio is the latency win, the first sound the user
+// hears — and everything after it is packed greedily at sentence
+// boundaries into chunks of at most ~280 chars (the same cap the
+// app's other chunking uses), so a three-sentence line costs two
+// Fish calls, not three. A sentence is never split mid-way unless
+// that single sentence alone exceeds the cap; then it is cut the
+// way the old chunker cut it (prefer a ". " boundary, else the cap).
 export function splitSentences(text: string): string[] {
   const line = text.trim();
   if (!line) return [];
@@ -72,17 +78,33 @@ export function splitSentences(text: string): string[] {
     if (s) sentences.push(s);
   }
   if (!sentences.length) sentences.push(line);
-  const chunks: string[] = [];
+  // Break any single over-cap sentence into ≤280-char pieces.
+  const pieces: string[] = [];
   for (const sentence of sentences) {
     let rest = sentence;
     while (rest.length > 280) {
       const cut = rest.lastIndexOf(". ", 280);
       const idx = cut > 60 ? cut + 1 : 280;
-      chunks.push(rest.slice(0, idx).trim());
+      pieces.push(rest.slice(0, idx).trim());
       rest = rest.slice(idx).trim();
     }
-    if (rest) chunks.push(rest);
+    if (rest) pieces.push(rest);
   }
+  if (pieces.length <= 1) return pieces;
+  // First piece solo; pack the remainder at piece boundaries.
+  const chunks: string[] = [pieces[0]];
+  let current = "";
+  for (const piece of pieces.slice(1)) {
+    if (!current) {
+      current = piece;
+    } else if (current.length + 1 + piece.length <= 280) {
+      current = `${current} ${piece}`;
+    } else {
+      chunks.push(current);
+      current = piece;
+    }
+  }
+  if (current) chunks.push(current);
   return chunks;
 }
 
