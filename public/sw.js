@@ -1,5 +1,22 @@
-const CACHE = "pause-and-nourish-v11";
-const CORE = ["/", "/check-in", "/pause", "/dashboard", "/shield", "/talk", "/support", "/icon.svg"];
+const CACHE = "pause-and-nourish-v12";
+const CORE = [
+  "/",
+  "/check-in",
+  "/pause",
+  "/dashboard",
+  "/shield",
+  "/talk",
+  "/support",
+  "/icon.svg",
+  // Baked Fish clips of the five fixed Talk It Through questions
+  // (Bob's cloned voice, generated once at build time) — precached so
+  // the offline/API-down fallback can ask them with no network.
+  "/voice/q1.mp3",
+  "/voice/q2.mp3",
+  "/voice/q3.mp3",
+  "/voice/q4.mp3",
+  "/voice/q5.mp3",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

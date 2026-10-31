@@ -9,6 +9,7 @@ import {
   getCue,
   getShieldPlan,
   hasCue,
+  listEntries,
   updateEntry,
   type CueKind,
   type JournalEntry,
@@ -18,6 +19,7 @@ import {
   assemblePlan,
   CHOICE_QUESTION,
   dealtSwap,
+  DEFERRED_LINE,
   EMPTY_ANSWERS,
   nextStage,
   parseBranch,
@@ -29,27 +31,64 @@ import {
   phrasePlan,
   phraseStage,
   questionText,
+  type FinalChoice,
   type PlanElement,
   type QuestionId,
   type TalkAnswers,
   type TalkStage,
 } from "@/lib/spine";
+import { speakLineChecked } from "@/lib/speak";
 import { applyDueDirectness } from "../shield/ShieldDay4";
 
-// Talk It Through (Day 5): the conversation SOS. The app asks one
-// question at a time out loud — the user's recorded prompt-pack clip
-// when one exists, the phone's voice otherwise — the user answers out
-// loud, Muse Voice Transcribe (via /api/transcribe) turns the answer
-// into words, deterministic parsing (src/lib/spine.ts) reads the
-// explicit values, and the game plan is dealt strictly from the user's
-// own saved playbook and spoken back (Fish via /api/speak for that one
-// dynamic line; phone voice as fallback). Zero menus during the
-// conversation; the only screen after it is the plan card plus optional
-// "for later" links. The tap-based SOS/pause flow is untouched.
+// Talk It Through (Day 5; free-form revision, 2026-10-30): the
+// conversation SOS. There is no script anymore: Muse Spark (via
+// /api/converse) holds a real back-and-forth — it asks its own
+// questions on the cuff, the user answers out loud, Muse Voice
+// Transcribe (via /api/transcribe) turns each answer into words, and
+// the brain offers its thoughts on what to do next drawn only from
+// the user's own saved playbook and declared journal patterns. The
+// deterministic spine parsers now run in the BACKGROUND over each
+// transcript, filling journal fields (and standing guard on the
+// driving gate) — they no longer steer the flow. The journal entry
+// (source "talk") carries the parsed fields plus the transcript.
+//
+// Voice (Bob's directive, 2026-10-30: the automatic voice is the Fish
+// voice): every brain line is spoken by Fish — the user's cloned
+// voice via /api/speak (speakLineChecked) — and the phone's voice is
+// only the last-resort fallback when Fish itself fails. If the Meta
+// key is unreachable, the client falls back to the original scripted
+// spine flow, where a question is asked by (a) the user's recorded
+// prompt-pack clip, else (b) the baked Fish clip in public/voice/,
+// else (c) the deterministic line spoken Fish-first. The recorded
+// moment cue still opens every session. Zero menus during the
+// conversation; the only screen after it is the plan card plus
+// optional "for later" links. The tap-based SOS/pause flow is
+// untouched.
 
 type UiPhase = "ready" | "conversing" | "finished";
 type CaptureMode = "idle" | "recording" | "sr" | "text";
 type FinishKind = "swap" | "delay" | "deferred" | "ended" | null;
+
+// One turn of the free-form conversation, as sent to /api/converse and
+// as written into the journal entry's note at the end.
+interface ConversationTurn {
+  role: "brain" | "user";
+  text: string;
+}
+
+// Compact declared-history summary the client builds from its own
+// journal and sends with every /api/converse call — the brain recalls
+// the user's patterns from this, never from inference.
+interface RecentJournalItem {
+  date: string;
+  context: string | null;
+  hungerType: string | null;
+  need: string | null;
+  urge: number | null;
+  choice: string | null;
+  coping: string | null;
+  learning: string | null;
+}
 
 const QUESTION_KINDS: CueKind[] = ["q1", "q2", "q3", "q4", "q5"];
 
@@ -141,6 +180,14 @@ export default function TalkClient() {
   const answersRef = useRef<TalkAnswers>({ ...EMPTY_ANSWERS });
   const planRef = useRef<ShieldPlan | null>(null);
   const retriesRef = useRef<Record<string, number>>({});
+  // Free-form conversation state: the running transcript (also the
+  // /api/converse payload), the declared-history summary, and the
+  // background parsers' captures (note bits + a parsed choice kept as
+  // a backup to the brain's own closing signal).
+  const historyRef = useRef<ConversationTurn[]>([]);
+  const recentRef = useRef<RecentJournalItem[]>([]);
+  const bitsRef = useRef("");
+  const backgroundChoiceRef = useRef<FinalChoice | null>(null);
   // Answer capture path: "api" (record + /api/transcribe) until the
   // route reports the key is missing; then "sr" (browser recognition)
   // or "text" (one-answer type-in) for the rest of the conversation.
@@ -217,67 +264,188 @@ export default function TalkClient() {
     });
   }
 
-  // Fish speaks ONE line; any failure falls back to the phone voice
-  // speaking the same words. Used for the game plan only — questions
-  // are the user's recordings or the phone voice (credit discipline).
-  async function fishSpeak(text: string): Promise<boolean> {
-    try {
-      const res = await fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) return false;
-      const blob = await res.blob();
-      await playBlob(blob);
-      return true;
-    } catch {
-      return false;
+  // Play a same-origin audio file (a baked Fish clip from
+  // public/voice/). Resolves true when the clip actually played to
+  // the end, false when it couldn't be loaded or played — the caller
+  // falls through the voice chain.
+  function playUrl(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        let done = false;
+        const finish = (ok: boolean) => {
+          if (!done) {
+            done = true;
+            resolve(ok);
+          }
+        };
+        audio.addEventListener("ended", () => finish(true), { once: true });
+        audio.addEventListener("error", () => finish(false), { once: true });
+        audio.play().catch(() => finish(false));
+        // A question clip is seconds long; never hang the conversation.
+        setTimeout(() => finish(true), 30000);
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  // Fish caps a spoken line at 300 chars — longer lines are split at
+  // sentence boundaries so every part can go to Fish first.
+  function chunkForSpeak(text: string): string[] {
+    const chunks: string[] = [];
+    let rest = text.trim();
+    while (rest.length > 280) {
+      const cut = rest.lastIndexOf(". ", 280);
+      const idx = cut > 60 ? cut + 1 : 280;
+      chunks.push(rest.slice(0, idx).trim());
+      rest = rest.slice(idx).trim();
+    }
+    if (rest) chunks.push(rest);
+    return chunks;
+  }
+
+  // The conversation's automatic voice (Bob's directive, 2026-10-30):
+  // Fish — the user's cloned voice, via speakLineChecked → /api/speak —
+  // speaks every dynamic line. The phone's voice is used only for a
+  // part Fish itself failed to speak.
+  async function speakAloud(text: string): Promise<void> {
+    for (const chunk of chunkForSpeak(text)) {
+      if (!aliveRef.current) return;
+      if (!(await speakLineChecked(chunk))) {
+        await phoneSpeak(chunk);
+      }
     }
   }
 
-  async function speakPlanLine(text: string): Promise<void> {
-    if (text.length <= 300) {
-      if (await fishSpeak(text)) return;
-      await phoneSpeak(text);
-      return;
-    }
-    // Fish caps a line at 300 chars — split at a sentence boundary:
-    // Fish takes the first part, the phone voice the remainder.
-    const cut = text.lastIndexOf(". ", 280);
-    const head = cut > 60 ? text.slice(0, cut + 1) : text.slice(0, 280);
-    const tail = text.slice(head.length).trim();
-    if (await fishSpeak(head)) {
-      if (tail) await phoneSpeak(tail);
-    } else {
-      await phoneSpeak(text);
-    }
+  // ---------- the free-form brain ----------
+
+  // The recent-journal summary from the device's own journal: the
+  // last few entries before this conversation, declared fields only.
+  function buildRecentJournal(entries: JournalEntry[], excludeId: string | null): RecentJournalItem[] {
+    return entries
+      .filter((e) => e.id !== excludeId)
+      .slice(0, 5)
+      .map((e) => ({
+        date: e.createdAt.slice(0, 10),
+        context: e.context,
+        hungerType: e.hungerType,
+        need: e.need,
+        urge: e.urgeIntensity,
+        choice: e.choice,
+        coping: e.copingUsed,
+        learning: e.learning,
+      }));
   }
 
-  // Muse Spark phrases the line when the key is in; every failure
-  // mode lands on the deterministic phrasing of the same stage.
-  async function converseSay(stage: TalkStage): Promise<string> {
+  interface BrainReply {
+    say: string;
+    done: boolean;
+    choice: FinalChoice | null;
+  }
+
+  // One conversational turn: the whole transcript goes up, the brain's
+  // next line (and its closing signal, when it has one) comes back.
+  // "not-configured" is distinguished from a plain failure because it
+  // switches the whole conversation to the offline scripted flow.
+  async function converseTurn(): Promise<BrainReply | "not-configured" | null> {
     const plan = planRef.current;
-    const fallback = plan
-      ? phraseStage(stage, answersRef.current, plan, plan.directness ?? null)
-      : "";
-    if (!plan) return fallback;
+    if (!plan) return null;
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stage,
-          answers: answersRef.current,
+          history: historyRef.current.slice(-24),
           shieldPlan: plan,
           directness: plan.directness ?? null,
+          recentJournal: recentRef.current,
+          driving: answersRef.current.driving,
         }),
       });
-      if (!res.ok) return fallback;
-      const data = (await res.json()) as { say?: unknown };
-      return typeof data.say === "string" && data.say.trim() ? data.say : fallback;
+      if (!res.ok) {
+        let code = "";
+        try {
+          code = ((await res.json()) as { error?: string }).error ?? "";
+        } catch {
+          // Non-JSON body — a plain failure.
+        }
+        return code === "meta_not_configured" ? "not-configured" : null;
+      }
+      const data = (await res.json()) as { say?: unknown; done?: unknown; choice?: unknown };
+      if (typeof data.say !== "string" || !data.say.trim()) return null;
+      return {
+        say: data.say,
+        done: data.done === true,
+        choice:
+          data.choice === "eat" || data.choice === "swap" || data.choice === "delay"
+            ? data.choice
+            : null,
+      };
     } catch {
-      return fallback;
+      return null;
+    }
+  }
+
+  // Background data capture: the spine parsers read each user turn and
+  // fill the journal fields, exactly as they did when they steered —
+  // but now nothing waits on them and they decide nothing. The one
+  // exception is the driving gate, enforced in runFreeform below.
+  function captureInBackground(text: string) {
+    const answers = answersRef.current;
+    const entry = entryRef.current;
+    const ctx = parseContext(text);
+    if (ctx.driving) answers.driving = true;
+    if (!answers.context && ctx.context) {
+      answers.context = ctx.context;
+      if (entry) updateEntry(entry.id, { context: ctx.context }).catch(() => {});
+    }
+    const hunger = parseHunger(text);
+    if (hunger) {
+      answers.hungerKind = hunger;
+      if (entry) {
+        updateEntry(entry.id, {
+          hungerType: hunger === "body" ? "physical" : hunger === "pull" ? "emotional" : "both",
+        }).catch(() => {});
+      }
+    }
+    const urge = parseUrge(text);
+    if (urge !== null) {
+      answers.urge = urge;
+      if (entry) updateEntry(entry.id, { urgeIntensity: urge }).catch(() => {});
+    }
+    const need = parseNeed(text);
+    if (need.need || need.targetFood || need.window) {
+      if (need.need) answers.need = need.need;
+      if (need.targetFood) answers.targetFood = need.targetFood;
+      if (need.window) answers.window = need.window;
+      answers.needRaw = text;
+      const bits: string[] = [];
+      if (need.targetFood) bits.push(`Wanted: ${need.targetFood}`);
+      if (need.window) bits.push(`Window: ${need.window}`);
+      if (bits.length) bitsRef.current = bits.join(" · ");
+      if (entry && need.need) updateEntry(entry.id, { need: need.need }).catch(() => {});
+    }
+    const choice = parseChoice(text);
+    if (choice) backgroundChoiceRef.current = choice;
+  }
+
+  // The transcript as stored on the entry. journal.ts caps note at
+  // 500 chars, so this is the conversation's opening, compactly
+  // rendered — the structured fields carry the rest of the capture.
+  function transcriptNote(): string {
+    const turns = historyRef.current
+      .map((t) => `${t.role === "brain" ? "Brain" : "You"}: ${t.text}`)
+      .join(" / ");
+    const full = bitsRef.current ? `${turns} [${bitsRef.current}]` : turns;
+    return full.slice(0, 500);
+  }
+
+  function persistTranscriptNote() {
+    const entry = entryRef.current;
+    if (entry && historyRef.current.length) {
+      updateEntry(entry.id, { note: transcriptNote() }).catch(() => {});
     }
   }
 
@@ -418,16 +586,19 @@ export default function TalkClient() {
     const text = questionText(qid);
     setCurrentLine(text);
     setStatus("");
-    // The recorded prompt-pack clip wins over any generated phrasing.
+    historyRef.current.push({ role: "brain", text });
+    // Offline-fallback voice priority: (a) the user's recorded
+    // prompt-pack clip, (b) the baked Fish clip of this exact question,
+    // (c) the deterministic line spoken Fish-first (phone last resort).
     const clip = await getCue(qid).catch(() => null);
     if (!aliveRef.current) return;
     if (clip) {
       await playBlob(clip.blob);
+    } else if (await playUrl(`/voice/${qid}.mp3`)) {
+      // The baked clip asked it — Bob's cloned voice, generated once
+      // at build time from this exact question text.
     } else {
-      const say = await converseSay(qid);
-      if (!aliveRef.current) return;
-      setCurrentLine(say || text);
-      await phoneSpeak(say || text);
+      await speakAloud(text);
     }
     if (!aliveRef.current) return;
     const heardText = await captureAnswerText();
@@ -438,13 +609,17 @@ export default function TalkClient() {
   async function handleAnswer(qid: QuestionId, raw: string | null) {
     const answers = answersRef.current;
     const entry = entryRef.current;
-    if (raw) setHeard(raw);
+    if (raw) {
+      setHeard(raw);
+      historyRef.current.push({ role: "user", text: raw });
+      persistTranscriptNote();
+    }
 
     const retry = async (): Promise<boolean> => {
       const used = retriesRef.current[qid] ?? 0;
       if (used >= 1) return false;
       retriesRef.current[qid] = used + 1;
-      await phoneSpeak("I didn't catch that.");
+      await speakAloud("I didn't catch that.");
       if (!aliveRef.current) return true;
       await askQuestion(qid);
       return true;
@@ -509,18 +684,30 @@ export default function TalkClient() {
       return;
     }
     if (stage === "deferred") {
-      const say = await converseSay("deferred");
+      const say = phraseStage(
+        "deferred",
+        answersRef.current,
+        planRef.current ?? { ...EMPTY_SHIELD_PLAN },
+        planRef.current?.directness ?? null,
+      );
       setCurrentLine(say);
-      await phoneSpeak(say);
+      historyRef.current.push({ role: "brain", text: say });
+      await speakAloud(say);
       setFinishKind("deferred");
       setClosingLine("We'll talk it through when you're parked. Your plan is here when you stop.");
       setPhase("finished");
       return;
     }
     if (stage === "exit-eat") {
-      const say = await converseSay("exit-eat");
+      const say = phraseStage(
+        "exit-eat",
+        answersRef.current,
+        planRef.current ?? { ...EMPTY_SHIELD_PLAN },
+        planRef.current?.directness ?? null,
+      );
       setCurrentLine(say);
-      await phoneSpeak(say);
+      historyRef.current.push({ role: "brain", text: say });
+      await speakAloud(say);
       const entry = entryRef.current;
       if (entry) {
         updateEntry(entry.id, { choice: "eat" }).catch(() => {});
@@ -561,15 +748,18 @@ export default function TalkClient() {
       if (!aliveRef.current) return;
     }
     setStatus("Your plan, in your words.");
-    // With a choice to capture, /api/converse phrases plan + choice
-    // question as one spoken line. On the pause handoff, the choice
-    // belongs to the pause flow — speak the plan body only, in the
-    // deterministic phrasing (the user's own words, unadorned).
+    // The plan is the user's own words, unadorned — spoken in the
+    // deterministic phrasing, Fish-first. With a choice to capture,
+    // the choice question rides along in the same spoken line; on the
+    // pause handoff the choice belongs to the pause flow, so the plan
+    // body goes alone.
     const display = withChoice
-      ? (await converseSay("plan")) || phrasePlan(elements, plan.directness ?? null)
+      ? `${phrasePlan(elements, plan.directness ?? null)} ${CHOICE_QUESTION}`
       : phrasePlan(elements, plan.directness ?? null);
     setCurrentLine(display);
-    await speakPlanLine(display);
+    historyRef.current.push({ role: "brain", text: display });
+    persistTranscriptNote();
+    await speakAloud(display);
     if (!aliveRef.current || !withChoice) return;
     await captureChoice();
   }
@@ -582,7 +772,7 @@ export default function TalkClient() {
     if (raw) setHeard(raw);
     let choice = raw ? parseChoice(raw) : null;
     if (!choice) {
-      await phoneSpeak("I didn't catch that. Eat it, swap it, or delay ten minutes?");
+      await speakAloud("I didn't catch that. Eat it, swap it, or delay ten minutes?");
       if (!aliveRef.current) return;
       const again = await captureAnswerText();
       if (!aliveRef.current) return;
@@ -598,7 +788,7 @@ export default function TalkClient() {
     }
     updateEntry(entry.id, { choice }).catch(() => {});
     if (choice === "eat") {
-      await phoneSpeak("Eat it, and enjoy it. Checkpoint in a moment.");
+      await speakAloud("Eat it, and enjoy it. Checkpoint in a moment.");
       router.push(`/pause?entry=${entry.id}&respawn=1`);
       return;
     }
@@ -608,12 +798,12 @@ export default function TalkClient() {
         ? `Swap it is. Your swap: ${swapEl.text}. It's stocked, and it's yours.`
         : "Swap it is — your stocked swaps are on the plan card below.";
       setClosingLine(line);
-      await phoneSpeak(line);
+      await speakAloud(line);
       setFinishKind("swap");
     } else {
       const line = "Ten minutes. Nothing to decide until then — the plan stays right here.";
       setClosingLine(line);
-      await phoneSpeak(line);
+      await speakAloud(line);
       setFinishKind("delay");
     }
     setPhase("finished");
@@ -631,17 +821,120 @@ export default function TalkClient() {
     }
     const entry = await addEntry({ source: "talk" }).catch(() => null);
     entryRef.current = entry;
+    // The declared-history summary rides along with every brain call.
+    try {
+      const entries = await listEntries();
+      recentRef.current = buildRecentJournal(entries, entry?.id ?? null);
+    } catch {
+      recentRef.current = [];
+    }
     // The recorded cue still opens the session, exactly as in SOS —
     // Talk It Through runs after it, inside the same session.
     const cue = await getCue("cue").catch(() => null);
     if (cue) await playBlob(cue.blob);
     if (!aliveRef.current) return;
-    await runStage("q1");
+    await runFreeform();
+  }
+
+  // The free-form conversation loop: brain speaks (Fish-first), user
+  // answers out loud, background parsers quietly fill the journal,
+  // repeat — until the brain closes, the user goes quiet, the turn
+  // cap hits, or the driving gate fires. If the Meta key is not
+  // configured, the whole conversation hands off to the scripted
+  // spine flow (askQuestion and everything below it).
+  async function runFreeform() {
+    let failures = 0;
+    for (let turn = 0; turn < 14; turn++) {
+      const res = await converseTurn();
+      if (!aliveRef.current) return;
+      if (res === "not-configured") {
+        await askQuestion("q1");
+        return;
+      }
+      if (res === null) {
+        failures += 1;
+        if (failures >= 2 || turn > 0) {
+          finishFreeform(null, "");
+          return;
+        }
+        continue;
+      }
+      failures = 0;
+      setCurrentLine(res.say);
+      setStatus("");
+      historyRef.current.push({ role: "brain", text: res.say });
+      persistTranscriptNote();
+      await speakAloud(res.say);
+      if (!aliveRef.current) return;
+      if (res.done) {
+        finishFreeform(res.choice, res.say);
+        return;
+      }
+      let raw = await captureAnswerText();
+      if (!aliveRef.current) return;
+      if (!raw) {
+        await speakAloud("I didn't catch that.");
+        if (!aliveRef.current) return;
+        raw = await captureAnswerText();
+        if (!aliveRef.current) return;
+      }
+      if (!raw) {
+        // The user has gone quiet — close gracefully with the plan.
+        finishFreeform(null, "");
+        return;
+      }
+      setHeard(raw);
+      historyRef.current.push({ role: "user", text: raw });
+      captureInBackground(raw);
+      persistTranscriptNote();
+      if (answersRef.current.driving) {
+        // The driving gate, enforced here as well as in the prompt:
+        // the conversation stops, full stop.
+        setCurrentLine(DEFERRED_LINE);
+        historyRef.current.push({ role: "brain", text: DEFERRED_LINE });
+        persistTranscriptNote();
+        await speakAloud(DEFERRED_LINE);
+        if (!aliveRef.current) return;
+        setFinishKind("deferred");
+        setClosingLine("We'll talk it through when you're parked. Your plan is here when you stop.");
+        setPhase("finished");
+        return;
+      }
+    }
+    finishFreeform(null, "");
+  }
+
+  // Free-form write-back and close: the entry gets the final choice
+  // (the brain's signal, with the background-parsed choice as backup),
+  // the dealt swap, and the transcript note; the plan card is dealt
+  // from the background captures for the finished screen. Eat routes
+  // to the respawn handoff, exactly as the scripted flow does.
+  function finishFreeform(choice: FinalChoice | null, say: string) {
+    const plan = planRef.current;
+    const entry = entryRef.current;
+    const finalChoice = choice ?? backgroundChoiceRef.current;
+    if (plan) setPlanElements(assemblePlan(answersRef.current, plan));
+    if (entry) {
+      const swap = plan ? dealtSwap(answersRef.current, plan) : null;
+      updateEntry(entry.id, {
+        ...(finalChoice ? { choice: finalChoice } : {}),
+        ...(swap ? { plannedResponse: swap } : {}),
+        note: transcriptNote(),
+      }).catch(() => {});
+    }
+    if (finalChoice === "eat" && entry) {
+      router.push(`/pause?entry=${entry.id}&respawn=1`);
+      return;
+    }
+    setClosingLine(say || "That's the conversation. Your plan is below, for whenever you want it.");
+    setFinishKind(finalChoice === "swap" ? "swap" : finalChoice === "delay" ? "delay" : "ended");
+    setPhase("finished");
   }
 
   function endConversation() {
     stopRecordingRef.current?.();
     textResolverRef.current?.("");
+    persistTranscriptNote();
     try {
       window.speechSynthesis?.cancel();
     } catch {
