@@ -26,7 +26,7 @@ const NEED_LABELS: Record<Need, string> = {
 
 const CHOICE_LABELS: Record<string, string> = {
   eat: "Eat",
-  swap: "Swap",
+  swap: "Had something else instead",
   delay: "Delay",
 };
 
@@ -183,7 +183,7 @@ export default function DashboardPage() {
     if (helpedSwaps.length > 0) {
       const latest = helpedSwaps[0];
       reflections.push(
-        `Your swap helped ${helpedSwaps.length} ${helpedSwaps.length === 1 ? "time" : "times"} — like the time the urge went ${latest.urgeIntensity} → ${latest.urgeAfter}.`,
+        `Having something else instead helped ${helpedSwaps.length} ${helpedSwaps.length === 1 ? "time" : "times"} — like the time the urge went ${latest.urgeIntensity} → ${latest.urgeAfter}.`,
       );
     }
     const delays = all.filter((e) => e.choice === "delay").length;

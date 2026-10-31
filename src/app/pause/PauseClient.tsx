@@ -5,13 +5,17 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   addEntry,
-  getCue,
   getEntry,
   getShieldPlan,
+  getUserProfile,
+  hasUserProfile,
+  listEntries,
   updateEntry,
   type JournalEntry,
   type Need,
+  type ProfileVoice,
   type ShieldPlan,
+  type UserProfile,
 } from "@/lib/journal";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
 import { speakLine } from "@/lib/speak";
@@ -19,7 +23,8 @@ import { speakLine } from "@/lib/speak";
 // Day 3 pause flow, voice-first:
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
 //   tool first) → run → outcome capture (urge before → after).
-//   SOS path: ?sos=1 → entry created on tap, recorded cue plays, plain SOS
+//   SOS path: ?sos=1 → entry created on tap, the brain composes the
+//   opening line for this exact moment (spoken Fish-first), plain SOS
 //   screen (why line large + three locked taps) → Urge Surfing runs →
 //   outcome capture. No form stands in front of the pause.
 //   open path: plain /pause — the toolkit on its own, nothing logged.
@@ -49,11 +54,11 @@ type Choice = "eat" | "swap" | "delay";
 // SOS tap starts a fresh entry.
 const SOS_GUARD_KEY = "pn.sosEntry";
 
-// The Fish why-line supplement fires at most once per SOS entry: the id
-// of the entry it has spoken for is kept beside the entry guard, so a
-// refresh of the SOS screen (which reuses the same entry) never speaks
-// the line a second time.
-const SOS_SPEAK_KEY = "pn.sosFishSpoken";
+// The composed SOS opening line fires at most once per SOS entry: the
+// id of the entry it was requested for is kept beside the entry guard,
+// so a refresh of the SOS screen (which reuses the same entry) never
+// asks for — or speaks — a second opening.
+const SOS_LINE_KEY = "pn.sosLine";
 
 async function getOrCreateSosEntry(): Promise<JournalEntry> {
   try {
@@ -124,11 +129,14 @@ export default function PauseClient() {
   const [tool, setTool] = useState<PauseTool>(PAUSE_TOOLS[0]);
   const [recommended, setRecommended] = useState<PauseTool>(PAUSE_TOOLS[0]);
 
-  // SOS cue playback
-  const [cueUrl, setCueUrl] = useState<string | null>(null);
-  const [cueNeedsTap, setCueNeedsTap] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const sosSpeakRef = useRef(false);
+  // SOS opening line: composed by the brain for this moment and spoken
+  // Fish-first (all-canned-out, 2026-10-31 — no recorded cue, no
+  // verbatim why-line read). planRef/profileRef hold the material the
+  // moment request is built from; sosLineRef + the sessionStorage flag
+  // keep the request to once per SOS entry.
+  const planRef = useRef<ShieldPlan | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
+  const sosLineRef = useRef(false);
   const [exitKind, setExitKind] = useState<"not-me" | "good">("good");
 
   // Runner
@@ -148,9 +156,8 @@ export default function PauseClient() {
 
   // Day 4: Choose → (Nourish Menu | midpoint) → respawn → learning
   const [shieldPlan, setShieldPlan] = useState<ShieldPlan | null>(null);
-  const [resetUrl, setResetUrl] = useState<string | null>(null);
-  const resetAudioRef = useRef<HTMLAudioElement | null>(null);
   const respawnSpeakRef = useRef(false);
+  const lastChoiceRef = useRef<Choice | null>(null);
   const [learningText, setLearningText] = useState("");
   const [learningSaved, setLearningSaved] = useState<string | null>(null);
 
@@ -164,24 +171,28 @@ export default function PauseClient() {
     const isSos = searchParams.get("sos") === "1";
 
     (async () => {
+      // The plan and profile are the material every composed moment
+      // line (SOS opening, respawn checkpoint) is built from — load
+      // them up front, whichever path this is.
+      try {
+        const plan = await getShieldPlan();
+        planRef.current = plan;
+        setWhyLine(plan.whyLine);
+      } catch {
+        // No plan readable — the screens carry their own text.
+      }
+      try {
+        const profile = await getUserProfile();
+        profileRef.current = hasUserProfile(profile) ? profile : null;
+      } catch {
+        profileRef.current = null;
+      }
       if (isSos) {
         setMode("sos");
         const created = await getOrCreateSosEntry();
         setEntry(created);
         setTool(toolById("urge-surfing"));
         setCoping("Urge Surfing");
-        try {
-          const plan = await getShieldPlan();
-          setWhyLine(plan.whyLine);
-        } catch {
-          // Fallback line covers it.
-        }
-        try {
-          const cue = await getCue();
-          if (cue) setCueUrl(URL.createObjectURL(cue.blob));
-        } catch {
-          // No cue — the hook stays silent and invisible (spec §2.2).
-        }
         setPhase("sos");
         return;
       }
@@ -193,14 +204,15 @@ export default function PauseClient() {
           if (searchParams.get("respawn") === "1") {
             // Day 5: Talk It Through hands off here after a spoken
             // "eat" (or an honest body-hunger exit) — land directly on
-            // the respawn screen with the same entry, so the reset line
-            // plays and the learning saves onto the conversation's
-            // entry, not a new one.
-            try {
-              const reset = await getCue("reset");
-              if (reset) setResetUrl(URL.createObjectURL(reset.blob));
-            } catch {
-              // No reset line — the respawn screen is complete in text.
+            // the respawn screen with the same entry, so the composed
+            // checkpoint line speaks and the learning saves onto the
+            // conversation's entry, not a new one.
+            if (
+              found.choice === "eat" ||
+              found.choice === "swap" ||
+              found.choice === "delay"
+            ) {
+              lastChoiceRef.current = found.choice;
             }
             setPhase("respawn");
             return;
@@ -219,58 +231,151 @@ export default function PauseClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- SOS: Fish supplement — the why line, spoken once ----------
-  // The recorded cue stays the primary voice. After it finishes, the why
-  // line is spoken once in the user's cloned voice (Fish, via /api/speak).
-  // Guarded twice: a ref for this mount, and a sessionStorage flag pinned
-  // to the SOS entry so a refresh never speaks it twice. An empty why
-  // line means no call at all, and every failure is silent — the line is
-  // already on screen, large.
-  function speakSosWhyLine() {
-    if (sosSpeakRef.current) return;
-    const line = whyLine.trim();
-    if (!line || !entry) return;
+  // ---------- composed moment lines (all-canned-out, 2026-10-31) ----------
+  // The SOS opening and the respawn checkpoint line used to be a
+  // recorded cue, a verbatim spoken why line, a recorded reset line,
+  // and a locked spoken sentence. All of that is out: the brain
+  // composes the one spoken line for this exact moment — from the
+  // clock, today's journal, a declared risk window, and the user's
+  // plan as material — via /api/converse mode "moment", and it is
+  // spoken Fish-first. Generation failure is silence: the pause
+  // toolkit runs speechless, and no canned line ever stands in.
+
+  function momentPartOfDay(hour: number): string {
+    if (hour >= 5 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 17) return "afternoon";
+    if (hour >= 17 && hour < 22) return "evening";
+    return "night";
+  }
+
+  function momentRiskWindow(plan: ShieldPlan, now: Date) {
+    const windows = plan.riskWindows ?? [];
+    if (!windows.length) return { inWindow: false };
+    const hour = now.getHours() + now.getMinutes() / 60;
+    const active = windows.find((w) =>
+      w.startHour <= w.endHour
+        ? hour >= w.startHour && hour < w.endHour
+        : hour >= w.startHour || hour < w.endHour,
+    );
+    if (active) return { inWindow: true as const, label: active.label };
+    let next: { label: string; startHour: number; delta: number } | null = null;
+    for (const w of windows) {
+      let delta = w.startHour - hour;
+      if (delta <= 0) delta += 24;
+      if (!next || delta < next.delta) next = { label: w.label, startHour: w.startHour, delta };
+    }
+    if (!next) return { inWindow: false };
+    const h24 = Math.floor(next.startHour) % 24;
+    const suffix = h24 >= 12 ? "PM" : "AM";
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    return { inWindow: false as const, nextLabel: next.label, nextStartsAt: `${h12} ${suffix}` };
+  }
+
+  // The voice for a generated line: an intake user's chosen neutral
+  // voice; the founder (no profile) gets his cloned voice by default.
+  function momentVoice(): ProfileVoice | undefined {
+    const profile = profileRef.current;
+    if (!profile) return undefined;
+    return profile.voice ?? "female";
+  }
+
+  async function fetchMomentLine(
+    kind: "sos" | "respawn",
+    choice: Choice | null,
+  ): Promise<string | null> {
+    const plan = planRef.current;
+    if (!plan) return null;
+    let todayJournal: unknown[] = [];
+    let recentJournal: unknown[] = [];
     try {
-      const raw = sessionStorage.getItem(SOS_SPEAK_KEY);
+      const entries = await listEntries();
+      const todayStr = new Date().toDateString();
+      todayJournal = entries
+        .filter((e) => new Date(e.createdAt).toDateString() === todayStr)
+        .slice(0, 8)
+        .reverse()
+        .map((e) => ({
+          time: new Date(e.createdAt).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+          context: e.context,
+          need: e.need,
+          urge: e.urgeIntensity,
+          urgeAfter: e.urgeAfter,
+          choice: e.choice,
+          learning: e.learning,
+        }));
+      recentJournal = entries.slice(0, 5).map((e) => ({
+        date: e.createdAt.slice(0, 10),
+        context: e.context,
+        hungerType: e.hungerType,
+        need: e.need,
+        urge: e.urgeIntensity,
+        choice: e.choice,
+        coping: e.copingUsed,
+        learning: e.learning,
+      }));
+    } catch {
+      // Journal unreadable — the moment context still stands.
+    }
+    const now = new Date();
+    const hour = now.getHours();
+    try {
+      const res = await fetch("/api/converse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "moment",
+          kind,
+          momentChoice: choice,
+          shieldPlan: plan,
+          profile: profileRef.current,
+          directness: plan.directness ?? null,
+          recentJournal,
+          localTime: { hour, partOfDay: momentPartOfDay(hour) },
+          dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
+          riskWindow: momentRiskWindow(plan, now),
+          todayJournal,
+        }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { say?: unknown };
+      return typeof data.say === "string" && data.say.trim() ? data.say : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---------- SOS: the opening line, composed for this moment ----------
+  // Fires once per SOS entry: a ref for this mount plus a
+  // sessionStorage flag pinned to the entry, so a refresh of the SOS
+  // screen (which reuses the entry) never asks twice. The screen
+  // never waits on the voice — the line speaks when it arrives, and
+  // if it never arrives the moment proceeds in silence.
+  useEffect(() => {
+    if (phase !== "sos" || !entry) return;
+    if (sosLineRef.current) return;
+    sosLineRef.current = true;
+    try {
+      const raw = sessionStorage.getItem(SOS_LINE_KEY);
       if (raw) {
         const flag = JSON.parse(raw) as { id: string; at: number };
         if (flag.id === entry.id && Date.now() - flag.at < 6 * 60 * 60 * 1000) return;
       }
       sessionStorage.setItem(
-        SOS_SPEAK_KEY,
+        SOS_LINE_KEY,
         JSON.stringify({ id: entry.id, at: Date.now() }),
       );
     } catch {
       // sessionStorage unavailable — the ref guard still holds this mount.
     }
-    sosSpeakRef.current = true;
-    void speakLine(line);
-  }
-
-  // ---------- SOS: play the cue once when the screen opens ----------
-  useEffect(() => {
-    if (phase !== "sos" || !cueUrl) return;
-    const audio = new Audio(cueUrl);
-    audioRef.current = audio;
-    const onEnded = () => speakSosWhyLine();
-    audio.addEventListener("ended", onEnded);
-    audio.play().catch(() => setCueNeedsTap(true));
-    return () => {
-      audio.removeEventListener("ended", onEnded);
-      audio.pause();
-    };
+    void (async () => {
+      const line = await fetchMomentLine("sos", null);
+      if (line) await speakLine(line, momentVoice());
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, cueUrl]);
-
-  // SOS with no recorded cue: speak the why line shortly after the plain
-  // screen shows — the screen never waits on the voice. (With a cue, its
-  // "ended" event above is the trigger instead.)
-  useEffect(() => {
-    if (phase !== "sos" || cueUrl) return;
-    const t = setTimeout(() => speakSosWhyLine(), 900);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, cueUrl]);
+  }, [phase, entry]);
 
   // ---------- SOS: auto-start Urge Surfing if no tap in 12s ----------
   useEffect(() => {
@@ -369,11 +474,15 @@ export default function PauseClient() {
   useEffect(() => {
     if (phase !== "choose" || shieldPlan) return;
     getShieldPlan()
-      .then(setShieldPlan)
+      .then((plan) => {
+        planRef.current = plan;
+        setShieldPlan(plan);
+      })
       .catch(() => setShieldPlan(null));
   }, [phase, shieldPlan]);
 
   async function choose(choice: Choice) {
+    lastChoiceRef.current = choice;
     if (entry) {
       const updated = await updateEntry(entry.id, { choice }).catch(() => null);
       if (updated) setEntry(updated);
@@ -383,56 +492,30 @@ export default function PauseClient() {
     } else if (choice === "swap") {
       setPhase("nourish");
     } else {
-      void enterRespawn();
+      enterRespawn();
     }
   }
 
-  async function enterRespawn() {
-    try {
-      const reset = await getCue("reset");
-      if (reset) setResetUrl(URL.createObjectURL(reset.blob));
-    } catch {
-      // No reset line — the respawn screen is complete in text.
-    }
+  function enterRespawn() {
     setPhase("respawn");
   }
 
-  // ---------- Respawn: Fish supplement — the checkpoint line, once ----------
-  // The recorded reset line stays the primary voice. After it finishes,
-  // the locked checkpoint line is spoken once in the user's cloned voice.
-  // Guarded by a ref — at most once per mount, and the respawn screen is
-  // reached once per flow. Silent on failure: the line is the screen's
-  // headline already.
-  function speakRespawnLine() {
+  // ---------- Respawn: the checkpoint line, composed for this moment ----------
+  // No recorded reset line, no locked spoken sentence (all-canned-out,
+  // 2026-10-31): when the respawn screen opens, the brain composes the
+  // checkpoint line from the choice just made and the user's plan as
+  // material, and it is spoken Fish-first, once per mount. Silent on
+  // failure — the headline on screen already says it in text.
+  useEffect(() => {
+    if (phase !== "respawn") return;
     if (respawnSpeakRef.current) return;
     respawnSpeakRef.current = true;
-    void speakLine("Checkpoint saved. Nothing reset.");
-  }
-
-  // Respawn: play the reset line once when the screen opens (falls back to
-  // the "Hear my reset line" exit if the browser wants a tap first).
-  useEffect(() => {
-    if (phase !== "respawn" || !resetUrl) return;
-    const audio = new Audio(resetUrl);
-    resetAudioRef.current = audio;
-    const onEnded = () => speakRespawnLine();
-    audio.addEventListener("ended", onEnded);
-    audio.play().catch(() => {});
-    return () => {
-      audio.removeEventListener("ended", onEnded);
-      audio.pause();
-    };
+    void (async () => {
+      const line = await fetchMomentLine("respawn", lastChoiceRef.current);
+      if (line) await speakLine(line, momentVoice());
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, resetUrl]);
-
-  // Respawn with no reset recording: speak the checkpoint line shortly
-  // after the screen shows instead.
-  useEffect(() => {
-    if (phase !== "respawn" || resetUrl) return;
-    const t = setTimeout(() => speakRespawnLine(), 600);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, resetUrl]);
+  }, [phase]);
 
   async function saveLearning() {
     const text = learningText.trim();
@@ -496,15 +579,6 @@ export default function PauseClient() {
           <p className="mt-3 max-w-md leading-relaxed text-stone-600">
             That&apos;s your why. This is a tricky moment — it&apos;s already moving.
           </p>
-          {cueNeedsTap && cueUrl && (
-            <button
-              type="button"
-              className="mt-5 rounded-full border border-stone-300 bg-white px-6 py-3 font-semibold text-stone-800"
-              onClick={() => audioRef.current?.play().catch(() => {})}
-            >
-              ▶ Hear your cue
-            </button>
-          )}
           <div className="mt-10 flex w-full max-w-md flex-col gap-3">
             <button
               type="button"
@@ -796,7 +870,7 @@ export default function PauseClient() {
             </p>
           )}
           <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
-            Eat it, swap it, or delay it a few minutes. All three count. Nothing here is scored.
+            Eat it, have something else instead, or wait a bit. All three count. Nothing here is scored.
           </p>
           <div className="mt-8 flex flex-col gap-3">
             <button
@@ -811,7 +885,7 @@ export default function PauseClient() {
               onClick={() => choose("swap")}
               className="rounded-full border border-stone-300 bg-white px-8 py-4 text-lg font-semibold text-stone-800"
             >
-              Swap
+              Have something else instead
             </button>
             <button
               type="button"
@@ -828,7 +902,8 @@ export default function PauseClient() {
         <div className="mt-8">
           <h2 className="text-center text-2xl font-bold text-stone-900">Your Nourish Menu</h2>
           <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
-            The swaps you stocked for moments like this — yours, chosen at a calm time.
+            What you set aside for moments like this — yours, chosen at a calm time, for when
+            you&apos;d rather have something else instead.
           </p>
           {entry?.plannedResponse && (
             <div className="mt-6 rounded-2xl border-2 border-[#2f5d3a] bg-[#e7efe3] p-5 shadow-sm">
@@ -856,7 +931,7 @@ export default function PauseClient() {
           ) : (
             !entry?.plannedResponse && (
               <p className="mx-auto mt-6 max-w-md text-center leading-relaxed text-stone-600">
-                Nothing is stocked yet. You can add your own swaps under{" "}
+                Nothing is stocked yet. You can add your own ideas for what to have instead under{" "}
                 <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
                   More options
                 </Link>{" "}
@@ -867,10 +942,10 @@ export default function PauseClient() {
           <div className="mt-8 text-center">
             <button
               type="button"
-              onClick={() => void enterRespawn()}
+              onClick={() => enterRespawn()}
               className="rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
             >
-              That&apos;s my swap
+              That&apos;s what I&apos;ll have instead
             </button>
           </div>
         </div>
@@ -894,7 +969,7 @@ export default function PauseClient() {
               <button
                 key={label}
                 type="button"
-                onClick={() => void enterRespawn()}
+                onClick={() => enterRespawn()}
                 className={`${chipBase} px-5 py-3 text-base ${chipIdle}`}
               >
                 {label}
@@ -904,7 +979,7 @@ export default function PauseClient() {
           <p className="mt-5">
             <button
               type="button"
-              onClick={() => void enterRespawn()}
+              onClick={() => enterRespawn()}
               className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
             >
               Skip this check
@@ -919,27 +994,11 @@ export default function PauseClient() {
           <p className="mx-auto mt-4 max-w-md leading-relaxed text-stone-600">
             You paused before you chose — that&apos;s the rep. One miss doesn&apos;t change the pattern.
           </p>
-          {resetUrl && (
-            <p className="mt-3 text-sm text-stone-600">Your reset line, in your own voice.</p>
-          )}
           <div className="mt-8 flex flex-col items-center gap-3">
-            {resetUrl && (
-              <button
-                type="button"
-                onClick={() => resetAudioRef.current?.play().catch(() => {})}
-                className="w-full max-w-md rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
-              >
-                ▶ Hear my reset line
-              </button>
-            )}
             <button
               type="button"
               onClick={() => setPhase("learning")}
-              className={`w-full max-w-md rounded-full px-8 py-4 text-lg font-semibold ${
-                resetUrl
-                  ? "border border-stone-300 bg-white text-stone-800"
-                  : "bg-[#2f5d3a] text-white shadow-sm transition hover:bg-[#274c30]"
-              }`}
+              className="w-full max-w-md rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
             >
               Log one line in my words
             </button>
@@ -1063,7 +1122,7 @@ export default function PauseClient() {
             </button>
           </div>
           <p className="mt-6 text-sm text-stone-600">
-            Eat, swap, or delay — all three are fine, and all three count.
+            Eat it, have something else instead, or wait — all three are fine, and all three count.
           </p>
         </div>
       )}

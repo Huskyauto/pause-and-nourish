@@ -22,7 +22,7 @@ export default function PromptPackPage() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
       <Link href="/shield" className="text-sm font-medium text-[#2f5d3a] underline underline-offset-4">
-        ← Back to your words and swaps
+        ← Back to your words — and what you'll have instead
       </Link>
       <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">
         The questions, in your voice

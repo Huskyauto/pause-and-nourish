@@ -89,7 +89,7 @@ export function openerLine(partOfDay: PartOfDay | null | undefined): string {
   return partOfDay ? PERSONABLE_OPENERS[partOfDay] : NEUTRAL_OPENER;
 }
 
-export const CHOICE_QUESTION = "So — eat it, swap it, or delay ten minutes? All three count.";
+export const CHOICE_QUESTION = "So — eat it, have something else instead, or wait a bit? All three count.";
 
 export const EXIT_EAT_LINE =
   "That's body hunger — that's what food is for. Eat, and enjoy it. No pause needed, nothing to fix.";
@@ -301,7 +301,7 @@ export function phrasePlan(elements: PlanElement[], directness: Directness | nul
   for (const el of elements) {
     if (el.kind === "why") parts.push(el.text); // verbatim, no frame
     else if (el.kind === "ifThen") parts.push(`Your if-then: ${el.text}.`);
-    else if (el.kind === "swap") parts.push(`Your swap for this: ${el.text}.`);
+    else if (el.kind === "swap") parts.push(`What you'll have instead: ${el.text}.`);
     else if (el.kind === "tool") parts.push(`Your ninety seconds: ${el.text}.`);
   }
   if (directness === "short") {

@@ -123,12 +123,12 @@ export default function ShieldPage() {
       <Link href="/" className="text-sm font-medium text-[#2f5d3a] underline underline-offset-4">
         ← Back
       </Link>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">Your words and swaps</h1>
+      <h1 className="mt-4 text-3xl font-bold tracking-tight text-stone-900">Your words — and what you&apos;ll have instead</h1>
       <p className="mt-2 leading-relaxed text-stone-600">
         All of this is optional. Your voice is the main thing.
       </p>
       <p className="mt-2 leading-relaxed text-stone-600">
-        Anything you add here — your why, your swaps, your plan — waits for you in a hard moment, in
+        Anything you add here — your why, what you&apos;ll have instead, your plan — waits for you in a hard moment, in
         your words. Nothing generic, nothing scored. Saved only on this device.
       </p>
 

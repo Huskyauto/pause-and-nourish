@@ -51,9 +51,9 @@ What lands: plain, short, direct sentences; his own phrasing; verifiable numbers
 
 1. **His why line**, verbatim from his saved playbook, first.
 2. **His if-then** for the trigger he names — approach-worded, toward something he chose, never a prohibition.
-3. **His function-matched swap** from his stocked list — the swap must do the same job the food was going to do.
+3. **What he stocked to have instead, function-matched** from his stocked list — what he has instead must do the same job the food was going to do.
 4. **A 90-second tool**: Urge Surfing (default; beats at 0/12/25/40/55/70/85 s, "This is a thought, not an order" at 47 s), STOP, 5-4-3-2-1 grounding, box breathing, 4-7-8 breathing.
-5. **Eat / swap / delay** — all legitimate. Pure body hunger exits honestly to eat.
+5. **Eat / have something else instead / delay** — all legitimate. Pure body hunger exits honestly to eat.
 6. **If he eats**: one optional midpoint check — "Still hungry, still enjoying it, both, or neither?" — then respawn: "Checkpoint saved. Nothing reset," his reset line, and on.
 7. **After any outcome**: offer to save one learning, in his words. Optional, always.
 8. Count pauses, not pounds. Firmness rule: "You can't renegotiate during the craving. You can renegotiate freely tomorrow morning."

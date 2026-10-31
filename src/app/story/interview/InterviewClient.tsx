@@ -422,7 +422,7 @@ export default function InterviewClient() {
             )}
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-                Your first swaps
+                What you'll have instead
               </dt>
               <dd className="mt-0.5">
                 {captured.swaps.length > 0

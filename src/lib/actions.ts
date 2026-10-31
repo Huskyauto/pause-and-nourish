@@ -142,9 +142,9 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
   },
   {
     "id": "swap",
-    "name": "A stocked swap",
-    "situations": ["real hunger or a named target food, with a swap stocked for this moment", "comfort", "reward", "lonely — the call-a-person option from his own list"],
-    "steps": [{ "say": "Your swap for this: {swap}. It's stocked, and it's yours.", "seconds": 4 }],
+    "name": "Something stocked to have instead",
+    "situations": ["real hunger or a named target food, with something stocked to have instead for this moment", "comfort", "reward", "lonely — the call-a-person option from his own list"],
+    "steps": [{ "say": "Here's what you stocked for this moment: {swap}. It's here, and it's yours.", "seconds": 4 }],
     "source": "His Shield Plan stocked swaps — Crackthecode Trigger-to-Options table + Lisa layer (internal only — never surfaced in app copy): pre-decided Plan-B alternatives + journey KB function-matching (same job: crunch for crunch, rest for tiredness, company for loneliness)",
   },
   {
@@ -186,7 +186,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "id": "long-pause",
     "name": "The long pause — ten minutes",
     "situations": ["any declared need", "urge 4-5 — a 90-second pause is too short", "evening at home"],
-    "steps": [{ "say": "We're taking ten minutes. Not a no — a pause. I'll stay with you.", "seconds": 115 }, { "say": "Still here. How's the number now?", "seconds": 170 }, { "say": "Halfway. Waves crest and come down — where is this one?", "seconds": 170 }, { "say": "Two minutes left. What's the need saying now?", "seconds": 115 }, { "say": "Ten minutes. Eat it, swap it, or let it wait — your call, on purpose.", "seconds": 10 }],
+    "steps": [{ "say": "We're taking ten minutes. Not a no — a pause. I'll stay with you.", "seconds": 115 }, { "say": "Still here. How's the number now?", "seconds": 170 }, { "say": "Halfway. Waves crest and come down — where is this one?", "seconds": 170 }, { "say": "Two minutes left. What's the need saying now?", "seconds": 115 }, { "say": "Ten minutes. Eat it, have something else instead, or let it wait — your call, on purpose.", "seconds": 10 }],
     "source": "Lisa layer (internal only — never surfaced in app copy): the concept that some urges need a longer pause — her protocol's steps are not in any source; this sequence is Pause & Nourish's own design",
   },
   {
@@ -355,7 +355,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
   {
     "id": "run-the-movie",
     "name": "Run the whole movie",
-    "situations": ["a live urge with a named food", "a justification script running — 'just this once'", "urge 3-5", "evening at home", "right after a stocked swap was declined"],
+    "situations": ["a live urge with a named food", "a justification script running — 'just this once'", "urge 3-5", "evening at home", "right after what he stocked to have instead was declined"],
     "steps": [{ "say": "The urge is only showing you the first bite. Let's run the whole movie — your version, the way it usually goes.", "seconds": 10 }, { "say": "First scene: the eating itself. See it? That's the part the urge keeps replaying.", "seconds": 15 }, { "say": "Now twenty minutes later. The food's done. How does that version of the evening feel — body, head, the lot?", "seconds": 20 }, { "say": "Now the end of the night. Getting ready for bed with that evening behind you.", "seconds": 15 }, { "say": "And tomorrow morning. First coffee, new day. Which morning do you want to wake up inside?", "seconds": 20 }, { "say": "That's the whole movie — not just the first bite. Which ending are we choosing?", "seconds": 10 }],
     "source": "Gap-check candidates v1.0, candidate 1 (Pass B — first-person recovery accounts and recovery-community tool collections across independent communities; grade: emerging — strong convergence, no direct trials) — the prospective mirror of entry 27's retrospective look; the movie is built entirely from his own past pattern",
   },
@@ -599,14 +599,14 @@ export const SITUATION_RANKING: SituationRanking[] = [
     situation: "Justification script running (e.g. 'I've earned it')",
     moves: ["replacement-line", "why-line", "name-the-job", "run-the-movie"],
   },
-  { situation: "Need declared: comfort", moves: ["box-breathing", "swap", "body-scan"], note: "the swap function-matched" },
+  { situation: "Need declared: comfort", moves: ["box-breathing", "swap", "body-scan"], note: "what he stocked to have instead, function-matched" },
   { situation: "Need declared: escape", moves: ["walk", "get-absorbed", "stop"] },
   { situation: "Need declared: soothe / relief", moves: ["breath-478", "body-scan", "quiet-minutes"] },
-  { situation: "Need declared: reward", moves: ["swap", "why-line", "long-pause"], note: "the swap is his pre-chosen reward" },
+  { situation: "Need declared: reward", moves: ["swap", "why-line", "long-pause"], note: "what he stocked to have instead is his pre-chosen reward" },
   {
     situation: "Need declared: lonely",
     moves: ["swap", "get-absorbed", "quiet-minutes", "text-first"],
-    note: "the swap here is the call-a-person option from his own list; the witness text is strongest for lonely",
+    note: "what he has instead here is the call-a-person option from his own list; the witness text is strongest for lonely",
   },
   { situation: "Evening at home (recliner / TV / kitchen terrain)", moves: ["body-check-first", "walk", "urge-surfing"] },
   {

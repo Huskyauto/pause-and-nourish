@@ -332,7 +332,7 @@ export default function StoryPage() {
         <h2 className="text-xl font-semibold text-stone-900">My why</h2>
         <p className="mt-1 text-sm text-stone-600">
           One line, in your words — the reason that matters in the hard moment, not just at setup
-          time. It shows up large on the SOS screen. (Same line as in Your words and swaps.)
+          time. It shows up large on the SOS screen. (Same line as on the setup page.)
         </p>
         <input
           value={plan.whyLine}
@@ -390,12 +390,12 @@ export default function StoryPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">What I can do instead — my first swaps</h2>
+        <h2 className="text-xl font-semibold text-stone-900">What I can do instead</h2>
         <p className="mt-1 text-sm leading-relaxed text-stone-600">
           For a moment that gets you, name what you can do instead — stocked and decided now, at
           calm time, so the moment doesn&apos;t have to invent it. Add more anytime in{" "}
           <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
-            Your words and swaps
+            Your words — and what you'll have instead
           </Link>
           .
         </p>
@@ -514,7 +514,7 @@ export default function StoryPage() {
           The thought that pops up in a hard moment — and what you can tell yourself instead, in
           your own words — lives in{" "}
           <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
-            Your words and swaps
+            Your words — and what you'll have instead
           </Link>
           , along with your voice recordings and how direct you want your second brain to be.
         </p>
