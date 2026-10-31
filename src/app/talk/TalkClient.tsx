@@ -61,9 +61,12 @@ import { applyDueDirectness } from "../shield/ShieldDay4";
 // key is unreachable, the client falls back to the original scripted
 // spine flow, where a question is asked by (a) the user's recorded
 // prompt-pack clip, else (b) the baked Fish clip in public/voice/,
-// else (c) the deterministic line spoken Fish-first. The recorded
-// moment cue still opens every session. Zero menus during the
-// conversation; the only screen after it is the plan card plus
+// else (c) the deterministic line spoken Fish-first. The session
+// itself always opens with the brain's live greeting — the
+// /api/converse opener in the free-form flow, openerLine in the
+// scripted one — never with a recording: the recorded moment cue
+// opens SOS only (Bob's directive, 2026-10-31). Zero menus during
+// the conversation; the only screen after it is the plan card plus
 // optional "for later" links. The tap-based SOS/pause flow is
 // untouched.
 //
@@ -930,11 +933,10 @@ export default function TalkClient() {
       recentRef.current = [];
       todayRef.current = [];
     }
-    // The recorded cue still opens the session, exactly as in SOS —
-    // Talk It Through runs after it, inside the same session.
-    const cue = await getCue("cue").catch(() => null);
-    if (cue) await playBlob(cue.blob);
-    if (!aliveRef.current) return;
+    // The conversation opens with the brain's own live greeting —
+    // the /api/converse opener on empty history, spoken Fish-first
+    // (Bob's directive, 2026-10-31). The recorded moment cue belongs
+    // to SOS; it never starts Talk It Through.
     await runFreeform();
   }
 
