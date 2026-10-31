@@ -39,6 +39,24 @@ export const SEED_REFRAMES: Record<Need, [string, string]> = {
     "Fuel makes sense — I feel wiped and empty. Food was my quick fill-up.",
     "I'm running on empty. Eating was how I tried to get my energy back.",
   ],
+  // Day 5: the four needs the spoken taxonomy added (tired / stressed /
+  // bored / lonely), written to the same voice rules as the seeds above.
+  tired: [
+    "Tired makes sense — I've been running all day. Food was how I tried to refuel fast.",
+    "I'm wiped, and I know it. Eating was my shortcut when what I wanted was rest.",
+  ],
+  stressed: [
+    "Stressed makes sense — I'm wound up tight. Food was how I turned the volume down.",
+    "I'm carrying the whole day in my shoulders. Eating loosened it for a minute.",
+  ],
+  bored: [
+    "Bored makes sense — nothing's happening and my brain wants input. Food was the quickest something.",
+    "I'm understimulated, that's all. Eating gave the moment a shape.",
+  ],
+  lonely: [
+    "Lonely makes sense — I want people, not food. Eating kept me company for a bit.",
+    "I miss being around my people. Food was the stand-in that showed up.",
+  ],
 };
 
 // Used when the user skipped the need step or tapped "Not sure" — same

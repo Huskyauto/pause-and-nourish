@@ -1,5 +1,5 @@
-const CACHE = "pause-and-nourish-v10";
-const CORE = ["/", "/check-in", "/pause", "/dashboard", "/shield", "/icon.svg"];
+const CACHE = "pause-and-nourish-v11";
+const CORE = ["/", "/check-in", "/pause", "/dashboard", "/shield", "/talk", "/support", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -19,6 +19,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+  // API routes (/api/speak, /api/transcribe, /api/converse) are live
+  // calls — audio and companion lines must never be served from cache.
+  if (new URL(request.url).pathname.startsWith("/api/")) return;
   event.respondWith(
     fetch(request)
       .then((response) => {

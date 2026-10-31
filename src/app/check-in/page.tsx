@@ -27,6 +27,10 @@ const needs: { value: Need; label: string }[] = [
   { value: "reward", label: "Reward" },
   { value: "relief", label: "Relief" },
   { value: "fuel", label: "Fuel" },
+  { value: "tired", label: "Tired / need rest" },
+  { value: "stressed", label: "Stressed / wound up" },
+  { value: "bored", label: "Bored" },
+  { value: "lonely", label: "Lonely" },
 ];
 const triggerCategories: { value: TriggerCategory; label: string }[] = [
   { value: "environmental", label: "Something around me" },

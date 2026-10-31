@@ -16,9 +16,19 @@ export type Need =
   | "numb"
   | "reward"
   | "relief"
-  | "fuel";
+  | "fuel"
+  // Day 5 (Talk It Through taxonomy pass): the underneath-states the
+  // spoken need question now names — rest, stress, boredom, people.
+  // "Something sweet" is a target food, not a need; "end of day" is a
+  // risk window, not a need — the talk parser keeps both out of here.
+  | "tired"
+  | "stressed"
+  | "bored"
+  | "lonely";
 
-export type HungerType = "physical" | "emotional" | "unsure";
+// "both" (Day 5): body hunger AND the pull at once — "both can be true"
+// is a valid spoken answer to the hunger question, stored as declared.
+export type HungerType = "physical" | "emotional" | "unsure" | "both";
 export type TriggerCategory = "environmental" | "emotional" | "physical" | "social";
 export type SleepQuality = "poor" | "okay" | "good";
 
@@ -42,13 +52,20 @@ export interface JournalEntry {
   plannedResponse: string | null;
   copingUsed: string | null;
   copingEffectiveness: number | null; // 1–5
-  source: "notice" | "sos";
+  source: "notice" | "sos" | "talk";
   urgeAfter: number | null; // 0–5, captured on the outcome screen (Day 3)
   cueAnswer: "me" | "not-me" | "good" | null; // SOS cue answer tap (Day 3)
   learning: string | null; // Day 4: save-one-learning — a tier-1 user statement, verbatim
 }
 
-export type CueKind = "cue" | "reset";
+// Day 5: the prompt pack joins the two moment recordings — q1..q5 are
+// the Talk It Through spine questions, recorded once at calm time in the
+// user's own voice so the conversation asks in their voice at zero
+// generated-voice cost. All kinds share the one voiceCue store, keyed by
+// kind; the Day 3 "cue" and Day 4 "reset" keys are unchanged.
+export type CueKind = "cue" | "reset" | "q1" | "q2" | "q3" | "q4" | "q5";
+
+export const CUE_KINDS: CueKind[] = ["cue", "reset", "q1", "q2", "q3", "q4", "q5"];
 export type VoiceChoice = "own" | "phone" | "later";
 export type Directness = "gentle" | "straight" | "short";
 
@@ -72,7 +89,11 @@ export const EMPTY_SHIELD_PLAN: ShieldPlan = {
 };
 
 const DB_NAME = "pause-and-nourish";
-const DB_VERSION = 3;
+// v4 (Day 5): no schema change — the prompt-pack kinds are new KEYS in
+// the existing voiceCue store, not new stores. The bump exists so the
+// upgrade path is explicit; onupgradeneeded only creates missing stores,
+// so every existing recording and entry carries over untouched.
+const DB_VERSION = 4;
 const JOURNAL_STORE = "journal";
 const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
@@ -83,10 +104,14 @@ const LS_SHIELD = "pn.shieldPlan";
 const LS_CUE = "pn.voiceCue";
 const LS_RESET_CUE = "pn.voiceResetCue";
 
-// Cue records are keyed by kind ("cue" | "reset"). The Day 3 cue already
-// lives under key "cue", so the kind key IS the Day 3 key — no migration.
+// Cue records are keyed by kind. The Day 3 cue already lives under key
+// "cue", so the kind key IS the Day 3 key — no migration. The legacy
+// localStorage keys for "cue" and "reset" stay exactly as they were; the
+// prompt-pack kinds get their own per-kind keys.
 function lsCueKey(kind: CueKind): string {
-  return kind === "reset" ? LS_RESET_CUE : LS_CUE;
+  if (kind === "cue") return LS_CUE;
+  if (kind === "reset") return LS_RESET_CUE;
+  return `pn.voiceCue.${kind}`;
 }
 
 // ---------- IndexedDB backend ----------
@@ -379,6 +404,36 @@ export async function saveShieldPlan(plan: ShieldPlan): Promise<void> {
     () => idbSaveShieldPlan(plan),
     () => lsWrite(LS_SHIELD, plan),
   );
+}
+
+// Delete EVERYTHING on this device (README promise, wired Day 5): the
+// journal, the Shield Plan, and every voice recording — cue, reset line,
+// and the whole prompt pack. Clears both backends unconditionally (not
+// via withFallback): a store cleared in IndexedDB must not leave a
+// localStorage copy behind from an earlier fallback period, or vice
+// versa. Best-effort per store — one failing clear never blocks the rest.
+export async function deleteEverything(): Promise<void> {
+  if (typeof indexedDB !== "undefined") {
+    try {
+      const db = await openDb();
+      const tx = db.transaction([JOURNAL_STORE, SHIELD_STORE, CUE_STORE], "readwrite");
+      await idbRequest(tx.objectStore(JOURNAL_STORE).clear());
+      await idbRequest(tx.objectStore(SHIELD_STORE).clear());
+      await idbRequest(tx.objectStore(CUE_STORE).clear());
+      db.close();
+    } catch {
+      // Fall through to the localStorage sweep below.
+    }
+  }
+  try {
+    lsWrite(LS_JOURNAL, []);
+    localStorage.removeItem(LS_SHIELD);
+    for (const kind of CUE_KINDS) {
+      localStorage.removeItem(lsCueKey(kind));
+    }
+  } catch {
+    // Storage blocked entirely — nothing more this device lets us do.
+  }
 }
 
 // Recording the moment cue IS choosing your own voice (Bob's rule,

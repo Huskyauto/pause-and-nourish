@@ -162,6 +162,21 @@ export default function ShieldPage() {
       </section>
 
       <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">The questions, in your voice</h2>
+        <p className="mt-1 text-sm leading-relaxed text-stone-600">
+          Talk It Through asks five questions. Record them here, once, in your own voice — and
+          that&apos;s the voice that asks in the moment. Any you skip, the phone&apos;s voice
+          covers.
+        </p>
+        <Link
+          href="/prompt-pack"
+          className="mt-4 inline-block rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+        >
+          Record the questions
+        </Link>
+      </section>
+
+      <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">My why</h2>
         <p className="mt-1 text-sm text-stone-600">
           One line, in your words — the reason that matters at 8 PM, not just at setup time. It shows up

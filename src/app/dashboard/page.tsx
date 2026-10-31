@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listEntries, type JournalEntry, type Need } from "@/lib/journal";
+import { deleteEverything, listEntries, type JournalEntry, type Need } from "@/lib/journal";
 import { PAUSE_TOOLS } from "@/lib/tools";
 
 // Day 4: the dashboard runs on the real on-device journal. Everything here
@@ -18,6 +18,10 @@ const NEED_LABELS: Record<Need, string> = {
   reward: "A reward",
   relief: "Relief",
   fuel: "Actual fuel",
+  tired: "Rest / tired",
+  stressed: "Stressed / wound up",
+  bored: "Bored",
+  lonely: "People / lonely",
 };
 
 const CHOICE_LABELS: Record<string, string> = {
@@ -49,6 +53,15 @@ function mode<T>(values: T[]): T | null {
 export default function DashboardPage() {
   const [entries, setEntries] = useState<JournalEntry[] | null>(null);
   const [nowMs, setNowMs] = useState(0);
+  // Delete-everything: two-step confirm, then all three on-device
+  // stores (journal, Shield Plan, voice recordings) are cleared.
+  const [deleteStep, setDeleteStep] = useState<"idle" | "confirm" | "done">("idle");
+
+  async function handleDeleteEverything() {
+    await deleteEverything().catch(() => {});
+    setEntries([]);
+    setDeleteStep("done");
+  }
 
   useEffect(() => {
     let live = true;
@@ -252,9 +265,60 @@ export default function DashboardPage() {
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-stone-900">Your companion</h2>
         <p className="mt-2 leading-relaxed text-stone-600">
-          Coming with the Day 5 build: a companion powered by Meta&apos;s models that reflects
-          your own patterns back — in your words, not advice.
+          Talk It Through is live: your second brain asks the questions out loud, you answer
+          out loud, and it deals your own plan back — in your words, not advice.
         </p>
+        <Link
+          href="/talk"
+          className="mt-3 inline-block font-medium text-[#2f5d3a] underline underline-offset-4"
+        >
+          Talk it through →
+        </Link>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-stone-900">Delete everything</h2>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          Everything lives on this device — your journal, your plan, and your voice recordings.
+          Deleting removes all of it from this phone, for good. There is no copy anywhere else.
+        </p>
+        {deleteStep === "idle" && (
+          <button
+            type="button"
+            onClick={() => setDeleteStep("confirm")}
+            className="mt-4 rounded-full border border-[#9a3b26]/40 bg-white px-5 py-3 font-semibold text-[#9a3b26] transition hover:border-[#9a3b26]"
+          >
+            Delete everything on this device
+          </button>
+        )}
+        {deleteStep === "confirm" && (
+          <div className="mt-4">
+            <p className="font-medium text-stone-900">
+              Are you sure? This deletes your journal, your plan, and your voice recordings.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleDeleteEverything()}
+                className="rounded-full bg-[#9a3b26] px-5 py-3 font-semibold text-white transition hover:bg-[#7f3120]"
+              >
+                Yes, delete everything
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteStep("idle")}
+                className="rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+              >
+                Keep my data
+              </button>
+            </div>
+          </div>
+        )}
+        {deleteStep === "done" && (
+          <p className="mt-4 font-medium text-stone-900">
+            Done — this device is clear. Fresh start whenever you&apos;re ready.
+          </p>
+        )}
       </section>
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">

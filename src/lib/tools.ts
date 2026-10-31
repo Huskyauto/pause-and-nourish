@@ -117,13 +117,16 @@ export function toolById(id: string | null | undefined): PauseTool {
 export function toolForNeed(need: Need | null): PauseTool {
   switch (need) {
     case "numb":
+    case "bored":
       return toolById("grounding");
     case "escape":
       return toolById("stop");
     case "soothe":
     case "relief":
+    case "stressed":
       return toolById("breath-478");
     case "comfort":
+    case "tired":
       return toolById("box-breathing");
     default:
       return toolById("urge-surfing");

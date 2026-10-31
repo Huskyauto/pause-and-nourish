@@ -104,6 +104,10 @@ const NEED_LABELS: { value: Need; label: string }[] = [
   { value: "reward", label: "A reward" },
   { value: "relief", label: "Relief" },
   { value: "fuel", label: "Actual fuel" },
+  { value: "tired", label: "Rest / tired" },
+  { value: "stressed", label: "Stressed / wound up" },
+  { value: "bored", label: "Bored" },
+  { value: "lonely", label: "People / lonely" },
 ];
 
 const chipBase =
@@ -186,6 +190,21 @@ export default function PauseClient() {
         if (found) {
           setEntry(found);
           setMode("notice");
+          if (searchParams.get("respawn") === "1") {
+            // Day 5: Talk It Through hands off here after a spoken
+            // "eat" (or an honest body-hunger exit) — land directly on
+            // the respawn screen with the same entry, so the reset line
+            // plays and the learning saves onto the conversation's
+            // entry, not a new one.
+            try {
+              const reset = await getCue("reset");
+              if (reset) setResetUrl(URL.createObjectURL(reset.blob));
+            } catch {
+              // No reset line — the respawn screen is complete in text.
+            }
+            setPhase("respawn");
+            return;
+          }
           const rec = toolForNeed(found.need);
           setRecommended(rec);
           setTool(rec);
@@ -865,6 +884,10 @@ export default function PauseClient() {
           </p>
           <p className="mt-8 text-lg font-medium text-stone-900">
             Still hungry, still enjoying it, both, or neither?
+          </p>
+          <p className="mx-auto mt-4 max-w-md leading-relaxed text-stone-600">
+            And has the flavor peaked yet? The best bites come first — when the flavor starts
+            fading, that&apos;s a natural place to stop.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {["Still hungry", "Still enjoying it", "Both", "Neither"].map((label) => (
