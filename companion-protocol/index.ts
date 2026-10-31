@@ -3,4 +3,5 @@
 // the guarantee map.
 export * from "./crypto";
 export * from "./events";
+export * from "./pairing";
 export * from "./protocol";
