@@ -88,6 +88,28 @@ export interface ShieldPlan {
   // Optional: plans that never ran the action simply lack them.
   todayWord?: string | null;
   todayWordDate?: string | null;
+  // Material slots (repertoire v1.2 residuals): three calm-time
+  // texts in the user's own words, saved for the moments they're
+  // for. MATERIAL, never scripts — the brain receives them in its
+  // context as labeled material and draws on them (quotes or
+  // weaves) inside responses it composes live for the moment;
+  // nothing here is ever played verbatim by rule. All optional:
+  // absent = the slot is off and behavior is exactly what it was
+  // before the slots existed.
+  // - tomorrowScene: his picture of tomorrow morning going right
+  //   (picture-tomorrow) — dealt back while he's deciding; also
+  //   fills that guided action's scene step when set.
+  // - witnessPlan: his text-first arrangement in his words — who
+  //   he texts before eating, and what he'll say. The brain may
+  //   remind him of HIS arrangement; the app never sends anything.
+  // - kindSentence: his own calm-time kind sentence for after a
+  //   slip (kind-sentence). NARROWNESS (binding, from the
+  //   repertoire ruling): his words only, drawn on once in the
+  //   respawn moment, then the reset — no generated comfort
+  //   language anywhere near it, at no other time.
+  tomorrowScene?: string | null;
+  witnessPlan?: string | null;
+  kindSentence?: string | null;
   // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
   ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
   voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later

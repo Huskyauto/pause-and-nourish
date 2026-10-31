@@ -989,6 +989,10 @@ export default function TalkClient() {
       // day does not count.
       wordText:
         plan.todayWordDate === new Date().toDateString() ? plan.todayWord?.trim() || null : null,
+      // His stored tomorrow-morning scene, if he saved one — the
+      // picture-tomorrow run leads his scene (the {scene} fill)
+      // instead of its generic middle steps.
+      sceneText: plan.tomorrowScene?.trim() || null,
     });
     if (!steps.length) return;
     actionRanRef.current = true;

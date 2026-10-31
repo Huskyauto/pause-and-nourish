@@ -371,7 +371,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "name": "Picture tomorrow morning",
     "situations": ["a live urge", "an impulsive grab moment", "grocery store and other buying moments", "evening kitchen terrain"],
     "steps": [{ "say": "Close your eyes if you can. We're going to tomorrow morning — not a lecture, a picture.", "seconds": 8 }, { "say": "First light. You're up. See where you are — the kitchen, the coffee starting.", "seconds": 20 }, { "say": "Feel how you want to feel in that moment — clear, steady, glad about how last night went.", "seconds": 20 }, { "say": "Stay in it a breath longer. That morning is real — and tonight is how you get there.", "seconds": 15 }, { "say": "Open your eyes. The urge is here, and so is that morning. What's the move that keeps both?", "seconds": 10 }],
-    "source": "Gap-check candidates v1.0, candidate 3 (Pass A — episodic future thinking: Daniel, Stanton & Epstein, Psychological Science 2013; Eating Behaviors 2015; Hollis-Hansen et al., Appetite 2019; grade: moderate — lab settings, acute outcomes) — shipped in the led-live form; the calm-time recorded/written personal scene, dealt back like his why line, is the setup residual. Kept distinct from entry 10 (why-line) on purpose: a scene, not a sentence",
+    "source": "Gap-check candidates v1.0, candidate 3 (Pass A — episodic future thinking: Daniel, Stanton & Epstein, Psychological Science 2013; Eating Behaviors 2015; Hollis-Hansen et al., Appetite 2019; grade: moderate — lab settings, acute outcomes) — shipped in the led-live form; the calm-time recorded/written personal scene, dealt back like his why line, is the setup residual. Kept distinct from entry 10 (why-line) on purpose: a scene, not a sentence — RESIDUAL CLOSED (material-slots build): the scene now has its calm-time slot (ShieldPlan.tomorrowScene); with one saved, a run leads his scene between the opening and closing steps, and the scene also rides the brain's conversation context as material, dealt back while he is deciding",
   },
   {
     "id": "mouth-reset",
@@ -413,7 +413,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "name": "One kind sentence",
     "situations": ["just ate / a slip happened", "shame risk", "the spiral that turns one episode into a lost day"],
     "steps": [{ "say": "Before anything else — the sentence you wrote at calm time, for exactly this moment. Say it now, out loud, in your own words.", "seconds": 20 }, { "say": "Hear whose side that puts you on. Yours. That's the whole rep — one sentence, yours, once.", "seconds": 10 }, { "say": "That's it — the way you wrote it to work. Nothing reset; next meal as normal.", "seconds": 5 }],
-    "source": "Gap-check candidates v1.0, candidate 9 (Pass A — Journal of Human Nutrition and Dietetics 2025 systematic review/meta-analysis: self-compassion techniques among those with the greatest emotional-eating improvements; grade: emerging) — NARROWNESS CONDITIONS, carried from the ruling: his own calm-time-authored sentence ONLY, spoken once at the post-slip moment, then the conversation routes to the reset as usual; the app authors no comfort language of its own, runs no meditation and no compassion protocol, and uses no therapy framing — the therapy built on this territory (compassion-focused therapy) stays out, and this entry lives nearest the fence, next to EXCLUDE entry 35. SHIPPED FORM: the app holds no sentence of its own — the steps lead him to speak his written sentence aloud himself; the dealt-back form (the brain speaking his stored sentence, like the {replacement} fill) awaits a calm-time storage slot for it",
+    "source": "Gap-check candidates v1.0, candidate 9 (Pass A — Journal of Human Nutrition and Dietetics 2025 systematic review/meta-analysis: self-compassion techniques among those with the greatest emotional-eating improvements; grade: emerging) — NARROWNESS CONDITIONS, carried from the ruling: his own calm-time-authored sentence ONLY, spoken once at the post-slip moment, then the conversation routes to the reset as usual; the app authors no comfort language of its own, runs no meditation and no compassion protocol, and uses no therapy framing — the therapy built on this territory (compassion-focused therapy) stays out, and this entry lives nearest the fence, next to EXCLUDE entry 35. SHIPPED FORM: the app holds no sentence of its own — the steps lead him to speak his written sentence aloud himself; the dealt-back form (the brain speaking his stored sentence, like the {replacement} fill) awaits a calm-time storage slot for it — SLOT BUILT (material-slots build): ShieldPlan.kindSentence now holds his sentence, and the dealt-back form rides the brain's context — drawn on once, composed around (never recited as a script), in the respawn moment. This action still leads him to say it himself: his saying it is the rep",
   },
 ];
 
@@ -469,6 +469,12 @@ export interface ActionContext {
   // fills `{word}` so a later run speaks his word back to him, the
   // way `{why}` speaks his why line. Null when no word is set today.
   wordText: string | null;
+  // His stored tomorrow-morning scene (the material slot on his
+  // plan), verbatim — when set, the picture-tomorrow run leads HIS
+  // picture between its opening and closing steps instead of the
+  // generic scene steps (see actionSteps). Null when he has saved
+  // no scene; the action then leads its generic form, unchanged.
+  sceneText: string | null;
 }
 
 // His declared needs as spoken phrases, for the `{need}` fill — the
@@ -528,6 +534,7 @@ function fillTemplate(text: string, ctx: ActionContext, pass: number): string {
     .replaceAll("{place}", ctx.placeText ?? "")
     .replaceAll("{need}", ctx.needText ?? "")
     .replaceAll("{word}", ctx.wordText ?? "")
+    .replaceAll("{scene}", ctx.sceneText ?? "")
     .replaceAll("{ordinal}", ORDINALS[pass] ?? String(pass + 1))
     .replaceAll("{n}", String(pass + 1))
     .replace(/\s+/g, " ")
@@ -543,10 +550,19 @@ export function actionSteps(kind: GuidedActionKind, ctx: ActionContext): ActionS
   }
   // A swap with nothing stocked is not an action — no steps, no run.
   if (def.id === "swap" && !ctx.swapText) return [];
+  // picture-tomorrow with his scene saved: the run leads HIS
+  // picture — the catalog's opening step, then his scene as one
+  // step (the {scene} fill), then the closing step. The generic
+  // middle steps stand down. With no scene saved, the entry's own
+  // steps run exactly as cataloged.
+  const defSteps =
+    def.id === "picture-tomorrow" && ctx.sceneText
+      ? [def.steps[0], { say: "{scene}", seconds: 30 }, def.steps[def.steps.length - 1]]
+      : def.steps;
   const passes = Math.max(1, def.repeat ?? 1);
   const steps: ActionStep[] = [];
   for (let pass = 0; pass < passes; pass++) {
-    for (const step of def.steps) {
+    for (const step of defSteps) {
       const say = step.say ? fillTemplate(step.say, ctx, pass) : "";
       // A step whose spoken slot couldn't be filled from his plan or
       // his declared words (a {placeholder} survived) makes the whole

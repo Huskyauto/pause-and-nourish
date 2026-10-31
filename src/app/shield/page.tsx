@@ -11,6 +11,7 @@ import {
   VoiceChoiceSection,
 } from "./ShieldDay4";
 import { PlacesSection, RiskWindowsSection } from "./PlacesWindows";
+import { MaterialSlotsSection } from "./MaterialSlots";
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
@@ -166,6 +167,11 @@ export default function ShieldPage() {
           placeholder="e.g. I want to feel good tomorrow morning"
           maxLength={140}
         />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your words, saved for the moment</h2>
+        <MaterialSlotsSection plan={plan} onUpdate={update} />
       </section>
 
       <section className="mt-10">

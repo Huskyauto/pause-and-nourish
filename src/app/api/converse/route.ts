@@ -404,6 +404,32 @@ function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string 
       `THEIR OWN REFRAME PAIRS: ${pairs.map((p) => `"${p.negative.trim()}" → "${p.positive.trim()}"`).join(" | ")}`,
     );
   }
+  // Material slots: his own calm-time words, saved for the moments
+  // they're for. Each block below is labeled material with its use
+  // written in — the brain draws on it inside a response it
+  // composes for THIS moment (quotes his words where they land,
+  // weaves them where that serves better); it never announces it is
+  // reading something saved, and never recites a slot as a script.
+  // A slot that isn't set contributes nothing — with all three
+  // absent this context is byte-for-byte what it was before.
+  const scene = (plan.tomorrowScene ?? "").trim().slice(0, 600);
+  if (scene) {
+    lines.push(
+      `\nHIS PICTURE OF TOMORROW MORNING, in his own words — the morning tonight is steering toward: "${scene}"\nWhen he is deciding — weighing whether to eat, standing at the edge of the choice — bring this picture back inside what you say: quote his words where they land and let that morning be present in this moment. Do not announce it as something saved; just let him see it again.`,
+    );
+  }
+  const witness = (plan.witnessPlan ?? "").trim().slice(0, 400);
+  if (witness) {
+    lines.push(
+      `\nHIS TEXT-FIRST ARRANGEMENT, in his own words: "${witness}"\nWhen eating is close and he has not mentioned it, you may remind him of HIS arrangement — his words, his person — the way someone who knows his plan would. The text is his to send; you never send anything, and you never pressure. One reminder is the whole move.`,
+    );
+  }
+  const kind = (plan.kindSentence ?? "").trim().slice(0, 300);
+  if (kind) {
+    lines.push(
+      `\nHIS KIND SENTENCE FOR AFTER A SLIP — his own words, written at calm time for exactly that moment: "${kind}"\nNarrow use, exactly as he set it up: only right after he has eaten, when the moment is about what just happened — draw on it ONCE, inside the response you are already composing (quote it where it lands), then move to the reset: nothing starts over, next meal as normal. Never generate comfort language of your own around it, and never reach for it at any other time.`,
+    );
+  }
   if (recent.length) {
     lines.push("\nTHEIR RECENT JOURNAL (patterns they declared, newest first):");
     for (const item of recent) {
@@ -579,6 +605,7 @@ function momentSystemPrompt(
   kind: MomentKind,
   name: string,
   directness: Directness,
+  hasKindSentence = false,
 ): string {
   const shared = `You are the second brain of Pause & Nourish, a personal habit tool. Compose ONE short spoken response for this exact moment — in your own words, for this moment only, never a stock line. The material below (the user's own plan, their journal, the moment context) is what you draw on: their why line is theirs to hear back — quote it verbatim when it fits, weave it in when that serves better.
 
@@ -600,7 +627,7 @@ THE MOMENT: ${name} just tapped SOS — a tricky moment with food is live right 
   }
   return `${shared}
 
-THE MOMENT: ${name} just chose — the choice itself is in the context below — and is at the checkpoint screen. Your line is the spoken close of that choice: the checkpoint is saved, nothing is reset, the pattern continues, and the next meal is a normal meal. If their plan carries words of their own for a moment like this (their why line, their reframe pairs), draw on them. No score, no verdict — a steady hand on the shoulder, in words.`;
+THE MOMENT: ${name} just chose — the choice itself is in the context below — and is at the checkpoint screen. Your line is the spoken close of that choice: the checkpoint is saved, nothing is reset, the pattern continues, and the next meal is a normal meal. If their plan carries words of their own for a moment like this (their why line, their reframe pairs), draw on them. No score, no verdict — a steady hand on the shoulder, in words.${hasKindSentence ? `\n\nOne more piece of their material, for exactly this moment: their plan carries a kind sentence they wrote at calm time for after a slip — it is in the playbook context below, labeled as theirs. If the choice just made was eating, draw on it once, inside this line — quote it where it lands — then the reset, as above. Never generate comfort language of your own around it.` : ""}`;
 }
 
 async function handleMoment(args: {
@@ -620,8 +647,9 @@ async function handleMoment(args: {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
   }
   const name = args.profile ? args.profile.name.trim() : "Bob";
+  const hasKindSentence = (args.plan.kindSentence ?? "").trim().length > 0;
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: momentSystemPrompt(args.kind, name, args.directness) },
+    { role: "system", content: momentSystemPrompt(args.kind, name, args.directness, hasKindSentence) },
     {
       role: "user",
       content: momentContext(args.localTime, args.dayType, args.riskWindow, args.today, args.profile, args.placeLabel),
