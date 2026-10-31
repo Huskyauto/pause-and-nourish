@@ -10,6 +10,8 @@ of `pause-and-nourish-connector-slice-spec-v1.0-2026-10-29.md`.
 - `crypto.ts` — SHA-256 digests, secret/code generation (WebCrypto).
 - `events.ts` — the events-only bridge contracts and their runtime guard.
 - `protocol.ts` — pairing ceremony, credentials, sessions, status.
+- `pairing.ts` — the pairing payload and its carriers (deep link, QR,
+  copied text) over one shared field builder.
 - `*.test.ts` — the Vitest suite (`npm test`).
 
 ## The guarantees, and where they live
@@ -45,6 +47,30 @@ of `pause-and-nourish-connector-slice-spec-v1.0-2026-10-29.md`.
 - **Reads stay pure.** `verifyToken`, `readStatus`, and
   `getLocalStatus` perform no writes and trigger nothing — there is
   no refresh-on-read anywhere in the module.
+
+## Pairing carriers
+
+The pairing payload is **carrier-agnostic**: three fields —
+`pairingId`, `secret`, `code` — built once by
+`pairingPayloadFields()` in `pairing.ts`. Every carrier is a rendering
+of those same fields, and `parsePairingPayload()` reads any rendering
+back to the identical fields (the tests pin this). The carriers, in
+the order the PWA presents them:
+
+- **Deep link — `pauseandnourish://pair?…` (primary).** The PWA and
+  the companion live on the *same phone*, so the handoff is a link
+  tap, not a camera. The companion registers the `pauseandnourish://`
+  scheme (or an Android App Link) to receive the payload on tap.
+- **Copied text.** A plain labeled rendering for the clipboard —
+  paste it into the companion or anywhere the payload needs to go.
+- **The exchange code, typed by hand.** Unchanged; always available.
+- **QR code — cross-device only.** For when the companion is on
+  *another* device whose camera can see this screen. (A QR shown on a
+  phone can't be scanned by that same phone, which is why it is no
+  longer the presented path.)
+
+The pairing ceremony, scopes, and module APIs are unaffected — only
+the presentation of the payload changed.
 
 ## Owner-side calls
 
