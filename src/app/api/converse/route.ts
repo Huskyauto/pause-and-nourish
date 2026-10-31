@@ -524,8 +524,8 @@ function momentContext(
   } else if (placeLabel) {
     lines.push(
       profile
-        ? `- Where they are: at "${placeLabel}" — a place they named and saved at calm time. You know this the way a person who knows their routine knows it: let it inform you naturally when it fits, and never announce it — no "I see you're at…" or anything that sounds like tracking.`
-        : `- Where he is: at "${placeLabel}" — a place he named and saved at calm time. You know this the way a person who knows his routine knows it: let it inform you naturally when it fits, and never announce it — no "I see you're at…" or anything that sounds like tracking.`,
+        ? `- Where they are: at "${placeLabel}" — a place they named and saved at calm time. You know this the way a person who knows their routine knows it: when where-they-are becomes relevant — they describe their surroundings, a stocked option lives there, the moment is one they tied to this place — name it back as naturally as that person would ("still at the shop, day done"), woven into what you're already saying. Never announce it cold at the start of a reply, and never make it sound like tracking — no "I see you're at…" ever.`
+        : `- Where he is: at "${placeLabel}" — a place he named and saved at calm time. You know this the way a person who knows his routine knows it: when where-he-is becomes relevant — he describes his surroundings, a stocked option lives there, the moment is one he tied to this place — name it back as naturally as that person would ("still at the shop, day done"), woven into what you're already saying. Never announce it cold at the start of a reply, and never make it sound like tracking — no "I see you're at…" ever.`,
     );
   }
   if (today.length) {
@@ -596,7 +596,7 @@ Respond with ONLY a JSON object, no other text: {"say": "<the exact line to spea
   if (kind === "sos") {
     return `${shared}
 
-THE MOMENT: ${name} just tapped SOS — a tricky moment with food is live right now. Your line opens the pause: meet them in this moment (the time of day, anything today's journal actually shows, a declared risk window they are inside — use only what the context gives you; invent nothing), bring their why into it in their own words, and point them at what is already happening: a ninety-second pause starts on its own in a few seconds, and three plain answers are on the screen — "that was me", "not me this time", "I'm good for now". Warm and steady, not chatty — this is the first sound of the pause, not the start of a conversation.`;
+THE MOMENT: ${name} just tapped SOS — a tricky moment with food is live right now. Your line opens the pause: meet them in this moment (the time of day, where they are if the context names one of their saved places — named back naturally, never announced like tracking, anything today's journal actually shows, a declared risk window they are inside — use only what the context gives you; invent nothing), bring their why into it in their own words, and point them at what is already happening: a ninety-second pause starts on its own in a few seconds, and three plain answers are on the screen — "that was me", "not me this time", "I'm good for now". Warm and steady, not chatty — this is the first sound of the pause, not the start of a conversation.`;
   }
   return `${shared}
 
