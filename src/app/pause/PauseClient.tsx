@@ -674,8 +674,8 @@ export default function PauseClient() {
 
           <p className="mt-8 text-center font-medium text-stone-900">
             {urgeBefore !== null
-              ? `The pull was ${urgeBefore} when you started. Where is it now?`
-              : "How strong is the pull right now?"}
+              ? `The urge was ${urgeBefore} when you started. Where is it now?`
+              : "How strong is the urge right now?"}
           </p>
           <div className="mt-3 flex justify-center gap-2" role="group" aria-label="Urge now, 0 to 5">
             {[0, 1, 2, 3, 4, 5].map((n) => (
@@ -735,7 +735,7 @@ export default function PauseClient() {
           {entry?.source === "sos" && (
             <>
               <p className="mt-10 text-center font-medium text-stone-900">
-                Want to note what was pulling you? <span className="font-normal text-stone-600">(optional — skip anything)</span>
+                Want to note what was drawing you? <span className="font-normal text-stone-600">(optional — skip anything)</span>
               </p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
                 {SOS_CONTEXTS.map((c) => (
@@ -1035,7 +1035,7 @@ export default function PauseClient() {
               </p>
               <p className="mx-auto mt-4 max-w-md leading-relaxed text-stone-600">
                 {urgeAfter! < urgeBefore!
-                  ? "Ninety seconds, and the pull moved. That's the whole idea — and now it's in your pattern, in your own numbers."
+                  ? "Ninety seconds, and the urge moved. That's the whole idea — and now it's in your pattern, in your own numbers."
                   : "The number is what it is — you paused, you noticed, you chose on purpose. That's the rep."}
               </p>
             </>

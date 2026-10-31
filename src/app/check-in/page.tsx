@@ -256,7 +256,7 @@ export default function CheckInPage() {
 
       {phase === "steps" && step === 2 && (
         <section className="mt-8">
-          <h2 className="text-xl font-semibold text-stone-900">What&apos;s pulling you right now?</h2>
+          <h2 className="text-xl font-semibold text-stone-900">What&apos;s drawing you right now?</h2>
           <div className="mt-4 flex flex-wrap gap-2">
             {contexts.map((c) => (
               <button key={c} type="button" aria-pressed={context === c} className={chipClass(context === c)} onClick={() => setContext(c)}>
@@ -265,7 +265,7 @@ export default function CheckInPage() {
             ))}
           </div>
           <p className="mt-6 font-semibold text-stone-900">
-            The pull is mostly… <span className="font-normal text-stone-600">(optional)</span>
+            The urge is mostly… <span className="font-normal text-stone-600">(optional)</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {triggerCategories.map((t) => (
@@ -311,7 +311,7 @@ export default function CheckInPage() {
             You named the <em>kind</em> of hunger in step 1 — these two are just the <em>amount</em>.
           </p>
           <ScaleRow label="How hungry is your body?" hint="(0 = stuffed, 5 = truly hungry)" min={0} max={5} value={hunger} onPick={setHunger} />
-          <ScaleRow label="How strong is the pull?" hint="(0 = barely there, 5 = very strong)" min={0} max={5} value={urgeIntensity} onPick={setUrgeIntensity} />
+          <ScaleRow label="How strong is the urge?" hint="(0 = barely there, 5 = very strong)" min={0} max={5} value={urgeIntensity} onPick={setUrgeIntensity} />
           <button type="button" onClick={next} className="w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]">
             Continue
           </button>

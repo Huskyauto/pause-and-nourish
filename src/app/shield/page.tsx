@@ -197,7 +197,7 @@ export default function ShieldPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">When this pulls at me… here&apos;s what I can do instead</h2>
+        <h2 className="text-xl font-semibold text-stone-900">When the urge hits me… here&apos;s what I can do instead</h2>
         <p className="mt-1 text-sm text-stone-600">
           Name a moment (like &ldquo;Watching TV&rdquo; or &ldquo;Kitchen&rdquo;), then add what you can do instead.
         </p>

@@ -11,11 +11,11 @@ import { RecordingSlot } from "../shield/VoiceCueSetup";
 // phone's voice asks that one. All recordings stay on this device.
 
 const SLOT_NOTES: Record<QuestionId, string> = {
-  q1: "The opener — where you are when the pull shows up.",
-  q2: "Body hunger, the pull, or both. Both can be true.",
+  q1: "The opener — where you are when the urge shows up.",
+  q2: "Body hunger, the urge to eat, or both. Both can be true.",
   q3: "The urge number, one to five — said out loud, it gets smaller.",
   q4: "What the moment is actually asking for underneath.",
-  q5: "Only asked when the pull is strong — the ninety seconds, your reset line, or the long pause.",
+  q5: "Only asked when the urge is strong — the ninety seconds, your reset line, or the long pause.",
 };
 
 export default function PromptPackPage() {

@@ -149,7 +149,7 @@ export default function DashboardPage() {
     if (helpedSwaps.length > 0) {
       const latest = helpedSwaps[0];
       reflections.push(
-        `Your swap helped ${helpedSwaps.length} ${helpedSwaps.length === 1 ? "time" : "times"} — like the time the pull went ${latest.urgeIntensity} → ${latest.urgeAfter}.`,
+        `Your swap helped ${helpedSwaps.length} ${helpedSwaps.length === 1 ? "time" : "times"} — like the time the urge went ${latest.urgeIntensity} → ${latest.urgeAfter}.`,
       );
     }
     const delays = all.filter((e) => e.choice === "delay").length;

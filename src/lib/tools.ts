@@ -30,7 +30,7 @@ export const PAUSE_TOOLS: PauseTool[] = [
   {
     id: "urge-surfing",
     name: "Urge Surfing",
-    tagline: "Ride the pull like a wave — it crests, then it comes down.",
+    tagline: "Ride the urge like a wave — it crests, then it comes down.",
     durationSeconds: 90,
     script: {
       kind: "beats",

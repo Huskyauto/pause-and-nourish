@@ -49,15 +49,15 @@ export const EMPTY_ANSWERS: TalkAnswers = {
 // scripts (recorded once at calm time in the user's own voice).
 export const SPINE_QUESTIONS: { id: QuestionId; text: string }[] = [
   { id: "q1", text: "Where are you right now?" },
-  { id: "q2", text: "Is this body hunger, or the pull — or both? Both can be true." },
-  { id: "q3", text: "How strong is the pull — one to five?" },
+  { id: "q2", text: "Is this body hunger, or the urge to eat — or both? Both can be true." },
+  { id: "q3", text: "How strong is the urge — one to five?" },
   {
     id: "q4",
     text: "What do you actually need right now — a break, comfort, rest, a chance to unwind, something to do, or people?",
   },
   {
     id: "q5",
-    text: "The pull's strong. Do you want the full ninety seconds, your reset line first, or the long pause — ten quiet minutes?",
+    text: "The urge is strong. Do you want the full ninety seconds, your reset line first, or the long pause — ten quiet minutes?",
   },
 ];
 
