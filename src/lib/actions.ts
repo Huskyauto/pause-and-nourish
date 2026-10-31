@@ -71,13 +71,15 @@ export interface ModalityDef {
   source: string;
 }
 
-// The repertoire of record: the modality catalog v1.1 (2026-10-31) —
-// 37 PORT/ADAPT entries mined from Bob's own apps (AI-BUDDY,
-// MetaBalance), the distilled method layer, and his journey
-// knowledge base, spliced in verbatim from the catalog JSON. The
-// nine seed ids from Bob's directive are entries 1–9, unchanged;
-// entries 31–37 are the v1.1 delta — seven ADAPT entries fetched
-// from AI-BUDDY's self_care.py in the GitHub backup.
+// The repertoire of record: the modality catalog v1.2 (2026-10-31) —
+// 46 PORT/ADAPT entries: mined from Bob's own apps (AI-BUDDY,
+// MetaBalance), the distilled method layer, his journey knowledge
+// base, and the bounded gap-check he locked the same day, spliced in
+// verbatim from the catalog JSON. The nine seed ids from Bob's
+// directive are entries 1–9, unchanged; entries 31–37 are the v1.1
+// delta — seven ADAPT entries fetched from AI-BUDDY's self_care.py
+// in the GitHub backup; entries 38–46 are the v1.2 delta — the nine
+// gap-check candidates (run-the-movie … kind-sentence).
 // EXCLUDE entries from the catalog never appear here. The table
 // grows by data, never by new conversation code.
 export const MODALITY_REPERTOIRE: ModalityDef[] = [
@@ -350,6 +352,69 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "steps": [{ "say": "One word for today — the word you want steering. Say it out loud.", "seconds": 15 }, { "say": "{word} — locked in. That word rides the day, and I'll speak it back when a moment needs it.", "seconds": 5 }],
     "source": "AI-BUDDY self_care.py (Intention Setting, fetched from the GitHub backup in v1.1) — ADAPTED: a calm-time morning arming rep; the word he declares becomes a spoken fill the brain can deal back, like his why line",
   },
+  {
+    "id": "run-the-movie",
+    "name": "Run the whole movie",
+    "situations": ["a live urge with a named food", "a justification script running — 'just this once'", "urge 3-5", "evening at home", "right after a stocked swap was declined"],
+    "steps": [{ "say": "The urge is only showing you the first bite. Let's run the whole movie — your version, the way it usually goes.", "seconds": 10 }, { "say": "First scene: the eating itself. See it? That's the part the urge keeps replaying.", "seconds": 15 }, { "say": "Now twenty minutes later. The food's done. How does that version of the evening feel — body, head, the lot?", "seconds": 20 }, { "say": "Now the end of the night. Getting ready for bed with that evening behind you.", "seconds": 15 }, { "say": "And tomorrow morning. First coffee, new day. Which morning do you want to wake up inside?", "seconds": 20 }, { "say": "That's the whole movie — not just the first bite. Which ending are we choosing?", "seconds": 10 }],
+    "source": "Gap-check candidates v1.0, candidate 1 (Pass B — first-person recovery accounts and recovery-community tool collections across independent communities; grade: emerging — strong convergence, no direct trials) — the prospective mirror of entry 27's retrospective look; the movie is built entirely from his own past pattern",
+  },
+  {
+    "id": "tomorrows-plan",
+    "name": "Put it on tomorrow's plan",
+    "situations": ["a strong craving for one specific food", "scarcity panic — 'if I don't have it now, I lose it'", "evening", "a plateau stretch where rigid striving is wearing thin"],
+    "steps": [{ "say": "We're not fighting this one tonight — we're putting it on tomorrow's plan. On purpose, on the books.", "seconds": 8 }, { "say": "Name it out loud: the food, and tomorrow's time and place for it. Say the whole plan.", "seconds": 20 }, { "say": "Hear what that is: a promise to yourself, not a new rule. Tomorrow it is yours — planned and legit, no guilt attached, nothing to sneak.", "seconds": 10 }, { "say": "And if it happens tonight anyway, that's data, not a failure — we log it, and the plan still stands. Now: what's tonight's move while tomorrow holds that one?", "seconds": 10 }],
+    "source": "Gap-check candidates v1.0, candidate 2 (Pass A — Coelho do Vale, Pieters & Zeelenberg, 'planned hedonic deviations,' Journal of Consumer Psychology 2016; grade: moderate) — GUARDRAIL carried from the ruling, in the step wording: the plan is a promise to himself, never a new restriction; eating it tomorrow is legitimate, and eating it early is data for the respawn flow, not a failure",
+  },
+  {
+    "id": "picture-tomorrow",
+    "name": "Picture tomorrow morning",
+    "situations": ["a live urge", "an impulsive grab moment", "grocery store and other buying moments", "evening kitchen terrain"],
+    "steps": [{ "say": "Close your eyes if you can. We're going to tomorrow morning — not a lecture, a picture.", "seconds": 8 }, { "say": "First light. You're up. See where you are — the kitchen, the coffee starting.", "seconds": 20 }, { "say": "Feel how you want to feel in that moment — clear, steady, glad about how last night went.", "seconds": 20 }, { "say": "Stay in it a breath longer. That morning is real — and tonight is how you get there.", "seconds": 15 }, { "say": "Open your eyes. The urge is here, and so is that morning. What's the move that keeps both?", "seconds": 10 }],
+    "source": "Gap-check candidates v1.0, candidate 3 (Pass A — episodic future thinking: Daniel, Stanton & Epstein, Psychological Science 2013; Eating Behaviors 2015; Hollis-Hansen et al., Appetite 2019; grade: moderate — lab settings, acute outcomes) — shipped in the led-live form; the calm-time recorded/written personal scene, dealt back like his why line, is the setup residual. Kept distinct from entry 10 (why-line) on purpose: a scene, not a sentence",
+  },
+  {
+    "id": "mouth-reset",
+    "name": "The mouth reset",
+    "situations": ["eating is done — after a chosen meal", "evening grazing", "post-meal lingering", "the 'one more bite' drift", "kitchen terrain after step away"],
+    "steps": [{ "say": "Eating's done — let's put the full stop on it. Brush your teeth. Or a strong mint rinse — gum for a stretch if that's what's at hand.", "seconds": 30 }, { "say": "Mouth's clean, the taste of food gone. That's eating, closed.", "seconds": 8 }],
+    "source": "Gap-check candidates v1.0, candidate 4 (Pass B — convergent first-person and practitioner accounts; gum variant: Hetherington & Boyland 2007 and the Nutrients 2025 gum-trial review; grade: emerging) — the sensory close: entry 16 moves the body away from the table, this takes the mouth out of eating mode, anywhere",
+  },
+  {
+    "id": "text-first",
+    "name": "Send the text first",
+    "situations": ["alone", "evening", "a live urge of any named need — strongest for lonely", "any moment where being unseen is part of the urge"],
+    "steps": [{ "say": "Before any eating — the text. The one you set up with your witness for exactly this: the urge is up, you're staying with your plan, you just needed somebody to know.", "seconds": 10 }, { "say": "Send it now. I'll wait.", "seconds": 30 }, { "say": "Sent. Somebody knows — and they knew before the choice. That's the whole move.", "seconds": 8 }, { "say": "Now we stay here a minute. How does the urge sit, with a witness on it?", "seconds": 45 }],
+    "source": "Gap-check candidates v1.0, candidate 5 (Pass B — first-person recovery accounts and peer-support program practice; grade: emerging) — the witness and the pre-written text are his calm-time arrangement (the text lives in his messages, written by him in advance); the in-app setup surface — name the witness, hold the text on his plan — is the residual. The clinical texting-program version is a therapy adjunct and does not port; the standalone peer move is what ships",
+  },
+  {
+    "id": "photo-first",
+    "name": "Photo before the first bite",
+    "situations": ["unplanned food appearing — somebody offers, a spread, a drive-through stop", "a mid-drift moment", "social events, alongside the event plan"],
+    "steps": [{ "say": "Before the first bite — take its picture.", "seconds": 12 }, { "say": "Now look at it. Really look. Still the plan?", "seconds": 12 }, { "say": "Decide looking, not drifting — eat it on purpose or let it pass, your call. Either way the picture's done its job; it isn't a log, and it doesn't need keeping.", "seconds": 10 }],
+    "source": "Gap-check candidates v1.0, candidate 6 (Pass A/B — Zepeda & Deal 2008, 43-person photo-diary pilot, effect at the decision point, plus photo-journal field studies; grade: emerging) — BUILD FLAG honored in the step wording: a pause device, never a log — the photo is looked at and done; it must never grow a gallery, a history, or a review screen",
+  },
+  {
+    "id": "wait-for-signal",
+    "name": "Wait for the signal",
+    "situations": ["plate one finished and seconds are calling", "mid-meal, at the table", "family table and buffet settings", "clean-plate pattern"],
+    "steps": [{ "say": "Plate one is done. Before seconds get a vote, we wait for the signal — fullness takes about twenty minutes to report in. This isn't a test; it's just letting the message arrive.", "seconds": 10 }, { "say": null, "seconds": 570 }, { "say": "Halfway. Still sitting with it — how's the body feeling so far?", "seconds": 15 }, { "say": null, "seconds": 540 }, { "say": "Twenty minutes. The signal's had its chance to land. Two quick numbers: how full — and how satisfied?", "seconds": 15 }, { "say": "Seconds now are your call, made on purpose, with the real information in. Either answer is fine.", "seconds": 8 }],
+    "source": "Gap-check candidates v1.0, candidate 7 (Pass A/B — standard satiety-lag guidance; slow-eating trials, e.g. Andrade, Greene & Melanson 2008; grade: emerging — the premise is textbook, the standalone rule untested, the twenty minutes a design-choice number) — the wait is for information, letting the signal arrive; never a test he can fail",
+  },
+  {
+    "id": "close-the-kitchen",
+    "name": "Close the kitchen",
+    "situations": ["evening at home", "night eating", "grazing terrain", "a kitchen that stays 'open' all night"],
+    "steps": [{ "say": "Time to close the kitchen for the night. We'll do it the same way every night — that's what makes it work.", "seconds": 8 }, { "say": "Dishes away first. Clear the counters as you go.", "seconds": 45 }, { "say": "Last look around — nothing left out, nothing calling.", "seconds": 20 }, { "say": "Now say it out loud, like you mean it: Kitchen's closed — see you at breakfast.", "seconds": 10 }, { "say": "Lights off, out of the room. The eating day is over — declared by you, in your kitchen.", "seconds": 10 }],
+    "source": "Gap-check candidates v1.0, candidate 8 (Pass B — convergent published routines: a national support organization's chapter library, a food-diary service's expert column, first-person evening routines; grade: emerging) — FLAGGED near-dup at ruling: adjacent to entry 30 (room-setup, a one-off calm-time surroundings change) and entry 16 (step-away, leaving one meal's table); the new content is the fixed nightly ritual shape — a spoken declaration that closes the whole eating day",
+  },
+  {
+    "id": "kind-sentence",
+    "name": "One kind sentence",
+    "situations": ["just ate / a slip happened", "shame risk", "the spiral that turns one episode into a lost day"],
+    "steps": [{ "say": "Before anything else — the sentence you wrote at calm time, for exactly this moment. Say it now, out loud, in your own words.", "seconds": 20 }, { "say": "Hear whose side that puts you on. Yours. That's the whole rep — one sentence, yours, once.", "seconds": 10 }, { "say": "That's it — the way you wrote it to work. Nothing reset; next meal as normal.", "seconds": 5 }],
+    "source": "Gap-check candidates v1.0, candidate 9 (Pass A — Journal of Human Nutrition and Dietetics 2025 systematic review/meta-analysis: self-compassion techniques among those with the greatest emotional-eating improvements; grade: emerging) — NARROWNESS CONDITIONS, carried from the ruling: his own calm-time-authored sentence ONLY, spoken once at the post-slip moment, then the conversation routes to the reset as usual; the app authors no comfort language of its own, runs no meditation and no compassion protocol, and uses no therapy framing — the therapy built on this territory (compassion-focused therapy) stays out, and this entry lives nearest the fence, next to EXCLUDE entry 35. SHIPPED FORM: the app holds no sentence of its own — the steps lead him to speak his written sentence aloud himself; the dealt-back form (the brain speaking his stored sentence, like the {replacement} fill) awaits a calm-time storage slot for it",
+  },
 ];
 
 export type GuidedActionKind = string;
@@ -507,7 +572,10 @@ export function actionSteps(kind: GuidedActionKind, ctx: ActionContext): ActionS
 // ---------- Situation rankings (catalog correlation map, as data) ----------
 
 // The catalog's situation → ranked-moves correlation map (repertoire
-// v1.0, Markdown companion), as data: when a moment matches a
+// v1.0, Markdown companion; v1.2 additions appended conservatively —
+// new moves at the END of existing rows, never displacing the order
+// his record ranks by, plus new rows for the time-axis wing and the
+// between-helpings seat), as data: when a moment matches a
 // situation, these are the moves in preference order. The converse
 // prompt renders this table under one ranking rule that outranks
 // the table itself: HIS OWN SESSION RECORD first — a move he marked
@@ -522,14 +590,14 @@ export interface SituationRanking {
 
 export const SITUATION_RANKING: SituationRanking[] = [
   { situation: "Live urge, nothing named yet", moves: ["name-the-job", "breathing", "hunger-check"] },
-  { situation: "Strong urge (4–5), he wants to ride it out", moves: ["urge-surfing", "long-pause", "walk"] },
+  { situation: "Strong urge (4–5), he wants to ride it out", moves: ["urge-surfing", "long-pause", "walk", "run-the-movie"] },
   { situation: "Moment moving too fast / autopilot starting", moves: ["stop", "breathing", "grounding"] },
   { situation: "Wound up / stressed (declared)", moves: ["breath-478", "box-breathing", "body-scan"] },
   { situation: "Numb / bored / flat, head elsewhere", moves: ["grounding", "get-absorbed", "quiet-minutes"] },
   { situation: "Tired / broken night (declared)", moves: ["rest", "water-first", "walk-short"] },
   {
     situation: "Justification script running (e.g. 'I've earned it')",
-    moves: ["replacement-line", "why-line", "name-the-job"],
+    moves: ["replacement-line", "why-line", "name-the-job", "run-the-movie"],
   },
   { situation: "Need declared: comfort", moves: ["box-breathing", "swap", "body-scan"], note: "the swap function-matched" },
   { situation: "Need declared: escape", moves: ["walk", "get-absorbed", "stop"] },
@@ -537,8 +605,8 @@ export const SITUATION_RANKING: SituationRanking[] = [
   { situation: "Need declared: reward", moves: ["swap", "why-line", "long-pause"], note: "the swap is his pre-chosen reward" },
   {
     situation: "Need declared: lonely",
-    moves: ["swap", "get-absorbed", "quiet-minutes"],
-    note: "the swap here is the call-a-person option from his own list",
+    moves: ["swap", "get-absorbed", "quiet-minutes", "text-first"],
+    note: "the swap here is the call-a-person option from his own list; the witness text is strongest for lonely",
   },
   { situation: "Evening at home (recliner / TV / kitchen terrain)", moves: ["body-check-first", "walk", "urge-surfing"] },
   {
@@ -552,14 +620,29 @@ export const SITUATION_RANKING: SituationRanking[] = [
     note: "eating is the plan — eat it on purpose",
   },
   { situation: "Mid-eating, a meal he chose", moves: ["flavor-peak", "mindful-eating", "step-away"] },
-  { situation: "Social event / family table", moves: ["event-plan", "flavor-peak", "step-away"] },
+  {
+    situation: "Plate one finished, seconds calling",
+    moves: ["wait-for-signal", "flavor-peak", "two-dials"],
+    note: "the wait is for information, not a test he can fail",
+  },
+  { situation: "Social event / family table", moves: ["event-plan", "flavor-peak", "step-away", "photo-first"] },
   {
     situation: "Just ate / a slip happened",
-    moves: ["reset", "twenty-minute-look", "replacement-line"],
-    note: "the twenty-minute look belongs at the close, never mid-moment",
+    moves: ["reset", "twenty-minute-look", "replacement-line", "kind-sentence"],
+    note: "the twenty-minute look belongs at the close, never mid-moment; the kind sentence — his own, spoken once — belongs first when the slip just happened, then the reset; it is listed last so the table never displaces his record order",
   },
   { situation: "Grazing / all-day drift", moves: ["body-check-first", "hunger-scale", "get-absorbed"] },
   { situation: "Something stirring, unnamed", moves: ["body-check-first", "name-the-job", "breathing"] },
+  {
+    situation: "The urge is really about later — now-or-never panic over one specific food",
+    moves: ["tomorrows-plan", "picture-tomorrow", "run-the-movie"],
+    note: "the time-axis wing (catalog v1.2): tomorrow is part of the plan, never a denial",
+  },
+  {
+    situation: "Eating just ended, evening grazing starting",
+    moves: ["mouth-reset", "close-the-kitchen", "step-away"],
+    note: "the mouth reset is the sensory close; close the kitchen is the nightly ritual that ends the eating day",
+  },
   {
     situation: "Calm time, a repeated place/food trigger",
     moves: ["room-setup", "why-line"],
