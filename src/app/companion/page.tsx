@@ -11,6 +11,8 @@ import {
   denyPairing,
   exchangePairing,
   getLocalStatus,
+  pairingCopyText,
+  pairingDeepLink,
   pairingQrPayload,
   renewCredential,
   revokeCredential,
@@ -74,6 +76,8 @@ export default function CompanionPage() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [revokeArmed, setRevokeArmed] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const qrRef = useRef<HTMLCanvasElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -89,7 +93,7 @@ export default function CompanionPage() {
   }, [refresh]);
 
   useEffect(() => {
-    if (offer && qrRef.current) {
+    if (offer && showQr && qrRef.current) {
       QRCode.toCanvas(qrRef.current, pairingQrPayload(offer), {
         width: 220,
         margin: 2,
@@ -97,7 +101,7 @@ export default function CompanionPage() {
         // The code is also shown as text; a failed drawing loses nothing.
       });
     }
-  }, [offer]);
+  }, [offer, showQr]);
 
   async function act(fn: () => Promise<void>) {
     setBusy(true);
@@ -120,6 +124,8 @@ export default function CompanionPage() {
     await act(async () => {
       setShownToken(null);
       setRevokeArmed(false);
+      setShowQr(false);
+      setCopyState("idle");
       const next = await createPairing(companionStore, [...COMPANION_SCOPES]);
       setOffer(next);
     });
@@ -127,10 +133,24 @@ export default function CompanionPage() {
 
   async function restartPairing() {
     await act(async () => {
+      setShowQr(false);
+      setCopyState("idle");
       await denyPairing(companionStore);
       const next = await createPairing(companionStore, [...COMPANION_SCOPES]);
       setOffer(next);
     });
+  }
+
+  async function copyPairingDetails() {
+    if (!offer) return;
+    try {
+      await navigator.clipboard.writeText(pairingCopyText(offer));
+      setCopyState("copied");
+    } catch {
+      // Clipboard unavailable (or permission denied) — the code above
+      // stays the fallback; nothing about the pairing changes.
+      setCopyState("failed");
+    }
   }
 
   const paired = !!status?.paired;
@@ -231,12 +251,65 @@ export default function CompanionPage() {
               <p className="mt-3 text-center text-3xl font-bold tracking-widest text-stone-900">
                 {offer.exchangeCode}
               </p>
-              <div className="mt-3 flex justify-center">
-                <canvas ref={qrRef} aria-label="Pairing QR code" />
+
+              {/* Carriers: ONE payload (pairingPayloadFields), several
+                  ways to hand it over. The companion lives on this
+                  same phone, so the deep link is primary — a QR code
+                  on a screen can't be scanned by the phone showing
+                  it. QR is kept, demoted, for the cross-device case. */}
+              <div className="mt-5 flex flex-col gap-3">
+                <a
+                  href={pairingDeepLink(offer)}
+                  className={`${primaryBtn} inline-block text-center`}
+                >
+                  Open in the companion app
+                </a>
+                <p className="text-sm leading-relaxed text-stone-600">
+                  The companion lives on this same phone, so this button is the way to hand
+                  the pairing over — no camera needed. Until the companion app is installed
+                  on this phone, tapping it has nothing to open yet — that&apos;s expected,
+                  and nothing about the pairing changes. The pairing stays good for the
+                  companion once it exists, and until then the code above can be typed in
+                  by hand.
+                </p>
+                <div>
+                  <button type="button" className={secondaryBtn} onClick={copyPairingDetails}>
+                    {copyState === "copied" ? "Copied" : "Copy pairing details"}
+                  </button>
+                  {copyState === "copied" && (
+                    <p className="mt-2 text-sm text-stone-600">
+                      Copied — paste it into the companion to pair.
+                    </p>
+                  )}
+                  {copyState === "failed" && (
+                    <p className="mt-2 text-sm text-stone-600">
+                      Copying didn&apos;t work just now — the code above works typed in by
+                      hand.
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-[#2f5d3a] underline underline-offset-4"
+                    onClick={() => setShowQr((v) => !v)}
+                    aria-expanded={showQr}
+                  >
+                    {showQr ? "Hide the QR code" : "Pairing a different device? Show a QR code"}
+                  </button>
+                  {showQr && (
+                    <>
+                      <div className="mt-3 flex justify-center">
+                        <canvas ref={qrRef} aria-label="Pairing QR code" />
+                      </div>
+                      <p className="mt-2 text-center text-sm text-stone-600">
+                        For when the companion is on another device — that device&apos;s
+                        camera scans this. On this phone, the button above is the way.
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="mt-2 text-center text-sm text-stone-600">
-                A companion would scan this, or type the code.
-              </p>
 
               {!status?.pendingApproved ? (
                 <div className="mt-6">
