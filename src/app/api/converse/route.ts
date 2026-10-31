@@ -106,7 +106,13 @@ export async function POST(request: Request) {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
     }
     // Any other Meta failure: the conversation continues on the
-    // deterministic phrasing rather than breaking mid-moment.
-    return Response.json({ say: fallback, stage, source: "fallback" });
+    // deterministic phrasing rather than breaking mid-moment. The
+    // upstream detail rides along for live diagnosis (Day 5 fix).
+    return Response.json({
+      say: fallback,
+      stage,
+      source: "fallback",
+      detail: err instanceof MetaApiError ? err.detail : undefined,
+    });
   }
 }

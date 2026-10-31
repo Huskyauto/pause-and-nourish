@@ -54,7 +54,10 @@ export async function POST(request: Request) {
     return Response.json({ text });
   } catch (err) {
     if (err instanceof MetaApiError) {
-      return Response.json({ error: err.message }, { status: err.status });
+      return Response.json(
+        { error: err.message, detail: err.detail },
+        { status: err.status },
+      );
     }
     return Response.json({ error: "transcribe_failed" }, { status: 502 });
   }

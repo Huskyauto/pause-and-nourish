@@ -34,9 +34,14 @@ export function metaApiKey(): string | null {
 
 export class MetaApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // Upstream response body (truncated), surfaced for live diagnosis of
+  // model-ID / path mismatches. Bodies are error payloads from Meta;
+  // the key is never in them (it travels in the Authorization header).
+  detail?: string;
+  constructor(status: number, message: string, detail?: string) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -53,10 +58,22 @@ async function metaFetch(path: string, init: RequestInit): Promise<Response> {
     throw new MetaApiError(502, "meta_service_unreachable");
   }
   if (!res.ok) {
-    // Never forward the raw body — it could echo request details.
-    throw new MetaApiError(502, `meta_service_error:${res.status}`);
+    let detail: string | undefined;
+    try {
+      detail = (await res.text()).slice(0, 500) || undefined;
+    } catch {
+      detail = undefined;
+    }
+    throw new MetaApiError(502, `meta_service_error:${res.status}`, detail);
   }
   return res;
+}
+
+// TEMPORARY (Day 5 live fix): raw GET /models so we can read the exact
+// model IDs this key can use. Remove once constants are verified.
+export async function metaModelsRaw(): Promise<unknown> {
+  const res = await metaFetch("/models", { method: "GET" });
+  return res.json();
 }
 
 export interface ChatMessage {
