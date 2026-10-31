@@ -8,11 +8,16 @@
 // muse-spark-1.3-contributor, muse-voice-transcribe-1.0,
 // muse-spark-1.3, muse-image-1.0, muse-spark-1.2-contributor,
 // muse-spark-1.2, muse-spark-1.1.
-//   - META_CHAT_MODEL: "muse-wonder-1.0" — Bob's direction (Oct 30):
-//     the conversation brain runs on Muse Wonder. NOTE: the key lists
-//     NO Wonder Contributor variant — only this Full ID — while the
-//     hackathon credits were said to cover standard Contributor
-//     variants only, so Wonder calls may bill the card on file.
+//   - META_CHAT_MODEL: "muse-spark-1.3" — Bob's decision (Oct 30):
+//     Spark is the in-the-moment brain. The flow, parsing, and plan
+//     assembly are all deterministic; the model only phrases one
+//     fenced line (output filter + deterministic fallback), so Spark
+//     is strong enough and faster to first sound. Muse Wonder
+//     ("muse-wonder-1.0" — the only Wonder ID the key lists; no
+//     Contributor variant, and Wonder Full is NOT covered by the
+//     hackathon credits) is reserved for the Day 7 weekly review.
+//     A "muse-spark-1.3-contributor" ID is also listed if credit
+//     coverage of the plain 1.3 ID ever becomes a question.
 //   - META_TRANSCRIBE_MODEL: "muse-voice-transcribe-1.0" (the bare
 //     product name 404'd — the versioned ID is the real one).
 //   - Chat: POST /chat/completions, response read
@@ -21,7 +26,7 @@
 //     shape is documented on metaTranscribe below).
 
 export const META_API_BASE_URL = process.env.META_API_BASE_URL ?? "https://api.meta.ai/v1";
-export const META_CHAT_MODEL = "muse-wonder-1.0";
+export const META_CHAT_MODEL = "muse-spark-1.3";
 export const META_TRANSCRIBE_MODEL = "muse-voice-transcribe-1.0";
 
 export function metaApiKey(): string | null {
@@ -71,7 +76,7 @@ export interface ChatMessage {
   content: string;
 }
 
-// Muse Wonder chat completion. Returns the reply text (possibly empty).
+// Muse Spark chat completion. Returns the reply text (possibly empty).
 export async function metaChat(messages: ChatMessage[]): Promise<string> {
   const res = await metaFetch("/chat/completions", {
     method: "POST",
