@@ -65,11 +65,13 @@ export interface ModalityDef {
   source: string;
 }
 
-// The repertoire of record: the modality catalog v1.0 (2026-10-31) —
-// 30 PORT/ADAPT entries mined from Bob's own apps (AI-BUDDY,
+// The repertoire of record: the modality catalog v1.1 (2026-10-31) —
+// 37 PORT/ADAPT entries mined from Bob's own apps (AI-BUDDY,
 // MetaBalance), the distilled method layer, and his journey
 // knowledge base, spliced in verbatim from the catalog JSON. The
-// nine seed ids from Bob's directive are entries 1–9, unchanged.
+// nine seed ids from Bob's directive are entries 1–9, unchanged;
+// entries 31–37 are the v1.1 delta — seven ADAPT entries fetched
+// from AI-BUDDY's self_care.py in the GitHub backup.
 // EXCLUDE entries from the catalog never appear here. The table
 // grows by data, never by new conversation code.
 export const MODALITY_REPERTOIRE: ModalityDef[] = [
@@ -290,6 +292,55 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "situations": ["calm time only — offered after a conversation ends, as a for-later action item", "a repeated place trigger", "trigger food in the house"],
     "steps": [{ "say": "One calm-time rep to consider: move the thing that keeps showing up in your moments out of sight — high shelf, or out of the house. Want it on your list?", "seconds": 10 }],
     "source": "Lisa layer (internal only — never surfaced in app copy): environment over willpower, reduce friction at calm time — ADAPTED: a post-conversation action item from his own words, never an in-the-moment lead",
+  },
+  {
+    "id": "tense-and-let-go",
+    "name": "Tense and let go",
+    "situations": ["evening wind-down", "wound up in the body", "before sleep", "end of a long day"],
+    "steps": [{ "say": "Lie down or settle back. We're going to tense and let go, one part at a time.", "seconds": 10 }, { "say": "Feet and legs — squeeze them tight.", "seconds": 5 }, { "say": "And let go. Feel the difference.", "seconds": 15 }, { "say": "Hands and arms — make fists, squeeze.", "seconds": 5 }, { "say": "Let go. Let them be heavy.", "seconds": 15 }, { "say": "Shoulders up to your ears — tight.", "seconds": 5 }, { "say": "Drop them. Done holding.", "seconds": 15 }, { "say": "One slow breath out. Where does the urge sit now?", "seconds": 10 }],
+    "source": "AI-BUDDY self_care.py (Progressive Relaxation recommendation, fetched from the GitHub backup in v1.1) — ADAPTED: benefit claims stripped; the tense-release sweep is led at wind-down length",
+  },
+  {
+    "id": "stretch-break",
+    "name": "Stretch break",
+    "situations": ["work day", "caretaking strain", "body tension he names", "morning — the wake-up variant", "sitting too long"],
+    "steps": [{ "say": "Stand up if you can. We're just loosening what's tight.", "seconds": 10 }, { "say": "Shoulders back — roll them, five slow ones.", "seconds": 20 }, { "say": "Now forward, five more.", "seconds": 20 }, { "say": "Head tilts — ear toward one shoulder, then the other. Gentle.", "seconds": 20 }, { "say": "Reach up tall, then bend a little to each side.", "seconds": 20 }, { "say": "That's the break. How does the body sit now?", "seconds": 10 }],
+    "source": "AI-BUDDY self_care.py (Tension Release Stretches + Morning Stretch Routine, fetched from the GitHub backup in v1.1) — ADAPTED: treatment framing and claims stripped; the led moves only",
+  },
+  {
+    "id": "step-outside",
+    "name": "Step outside",
+    "situations": ["escape", "relief", "stuck indoors all day", "evening at home", "after a hard call"],
+    "steps": [{ "say": "Step outside — porch, yard, doorway, anywhere with open air.", "seconds": 25 }, { "say": "Feel the air on your face. Just stand in it.", "seconds": 30 }, { "say": "Listen — what's the farthest sound you can hear?", "seconds": 30 }, { "say": "Look at the sky for one slow breath.", "seconds": 20 }, { "say": "That's the rep. How does the urge sit, out here?", "seconds": 10 }],
+    "source": "AI-BUDDY self_care.py (Brief Nature Connection, fetched from the GitHub backup in v1.1) — ADAPTED: cortisol and mood claims stripped; a stationary outdoor pause, no walk required",
+  },
+  {
+    "id": "pen-moving",
+    "name": "Pen moving — five minutes",
+    "situations": ["numb", "bored", "seated with paper nearby — waiting room, kitchen table", "an unoccupied mind, no project at hand"],
+    "steps": [{ "say": "Grab paper and a pen — anything that writes.", "seconds": 20 }, { "say": "Let the pen move. Lines, loops, scribbles — nothing to make, nowhere to get to.", "seconds": 140 }, { "say": "Still going. No judging it — just movement.", "seconds": 130 }, { "say": "That's five minutes. Where does the urge sit?", "seconds": 10 }],
+    "source": "AI-BUDDY self_care.py (Quick Doodle Session, fetched from the GitHub backup in v1.1) — ADAPTED: brain-region claims stripped; the seated absorption rep for when his standing pursuit is not at hand",
+  },
+  {
+    "id": "one-thank-you",
+    "name": "Send one thank-you",
+    "situations": ["lonely", "calm time only — offered after a conversation ends, as a for-later action item"],
+    "steps": [{ "say": "One for-later rep: send one short thank-you to somebody who's earned it — a text is plenty. Want it on your list?", "seconds": 10 }],
+    "source": "AI-BUDDY self_care.py (Gratitude Message, fetched from the GitHub backup in v1.1) — ADAPTED: a for-later action item after the conversation (his locked interaction model), never an in-the-moment lead; benefit claims stripped",
+  },
+  {
+    "id": "three-good-things",
+    "name": "Three good things",
+    "situations": ["end of day", "calm time", "respawn close — the day gets closed honest"],
+    "steps": [{ "say": "Close the day honest. Three things that went well today — small counts. First one?", "seconds": 20 }, { "say": "Second?", "seconds": 15 }, { "say": "Third?", "seconds": 15 }, { "say": "And the best moment of the day — the one worth keeping?", "seconds": 15 }, { "say": "Saved, in your words. That's the day, closed.", "seconds": 5 }],
+    "source": "AI-BUDDY self_care.py (Quick Journal Check-in + Daily Highlight Reflection, fetched from the GitHub backup in v1.1) — ADAPTED: spoken at day close, his answers saved verbatim, nobody scores them",
+  },
+  {
+    "id": "one-word",
+    "name": "One word for today",
+    "situations": ["morning arming", "calm time only — a setup rep, never an in-the-moment lead"],
+    "steps": [{ "say": "One word for today — the word you want steering. Say it out loud.", "seconds": 15 }, { "say": "Locked in. That word rides the day, and I'll speak it back when a moment needs it.", "seconds": 5 }],
+    "source": "AI-BUDDY self_care.py (Intention Setting, fetched from the GitHub backup in v1.1) — ADAPTED: a calm-time morning arming rep; the word he declares becomes a spoken fill the brain can deal back, like his why line",
   },
 ];
 
