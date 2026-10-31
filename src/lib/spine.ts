@@ -65,6 +65,30 @@ export function questionText(id: QuestionId): string {
   return SPINE_QUESTIONS.find((q) => q.id === id)?.text ?? "";
 }
 
+// ---------- Personable openers (deterministic fallback voice) ----------
+//
+// When the brain can't be reached (no key, Meta error), the first
+// line of a conversation is one of these: warm, personal, plain, and
+// shaped by the part of day the device reports. Few on purpose —
+// these are a safety net, not a script; the free-form brain opens in
+// its own words whenever it can. Shared by /api/converse (empty-
+// history fallback) and the client's offline scripted flow.
+
+export type PartOfDay = "morning" | "afternoon" | "evening" | "night";
+
+export const PERSONABLE_OPENERS: Record<PartOfDay, string> = {
+  morning: "Morning, Bob — how'd you sleep, and how's the day looking?",
+  afternoon: "Hey, Bob — how's the day treating you? Any urges show up so far?",
+  evening: "Evening, Bob — how are you feeling tonight? Any urges show up today?",
+  night: "Hey, Bob — it's late. How are you doing tonight? Something on your mind?",
+};
+
+export const NEUTRAL_OPENER = "Hey, Bob — how are you doing? Any urges show up today?";
+
+export function openerLine(partOfDay: PartOfDay | null | undefined): string {
+  return partOfDay ? PERSONABLE_OPENERS[partOfDay] : NEUTRAL_OPENER;
+}
+
 export const CHOICE_QUESTION = "So — eat it, swap it, or delay ten minutes? All three count.";
 
 export const EXIT_EAT_LINE =

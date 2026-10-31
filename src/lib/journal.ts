@@ -77,6 +77,10 @@ export interface ShieldPlan {
   // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
   ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
   voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later
+  // Declared risk windows (local hours, end may wrap past midnight).
+  // Optional: no setup surface collects them yet, so plans normally
+  // lack them — the talk context reads them only when present.
+  riskWindows?: { label: string; startHour: number; endHour: number }[];
   directness?: Directness | null; // currently effective buddy directness
   directnessPending?: { level: Directness; effectiveFrom: string } | null; // §2.6: weakening lands next day
 }

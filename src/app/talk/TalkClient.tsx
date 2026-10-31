@@ -22,6 +22,7 @@ import {
   DEFERRED_LINE,
   EMPTY_ANSWERS,
   nextStage,
+  openerLine,
   parseBranch,
   parseChoice,
   parseContext,
@@ -32,6 +33,7 @@ import {
   phraseStage,
   questionText,
   type FinalChoice,
+  type PartOfDay,
   type PlanElement,
   type QuestionId,
   type TalkAnswers,
@@ -64,6 +66,13 @@ import { applyDueDirectness } from "../shield/ShieldDay4";
 // conversation; the only screen after it is the plan card plus
 // optional "for later" links. The tap-based SOS/pause flow is
 // untouched.
+//
+// Personable layer (Bob's directive, 2026-10-30): every converse call
+// also carries the moment — local time + part of day, weekday vs
+// weekend, declared-risk-window state, and today's journal slice —
+// so the brain greets Bob like someone who knows him, checks on
+// today's urges, and can walk the day with him; and the scripted
+// offline flow opens with the same warm greeting (spine openerLine).
 
 type UiPhase = "ready" | "conversing" | "finished";
 type CaptureMode = "idle" | "recording" | "sr" | "text";
@@ -88,6 +97,40 @@ interface RecentJournalItem {
   choice: string | null;
   coping: string | null;
   learning: string | null;
+}
+
+// Today's slice of the journal (oldest first) — the brain greets him
+// with his day already in view and can walk it with him at calm time.
+interface TodayJournalItem {
+  time: string;
+  context: string | null;
+  need: string | null;
+  urge: number | null;
+  urgeAfter: number | null;
+  choice: string | null;
+  learning: string | null;
+}
+
+// Whether he is inside a risk window he declared at calm time,
+// computed on-device at send time from the plan's declared windows.
+interface RiskWindowContext {
+  inWindow: boolean;
+  label?: string;
+  nextLabel?: string;
+  nextStartsAt?: string;
+}
+
+function partOfDayFor(hour: number): PartOfDay {
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "night";
+}
+
+function formatHour(hour: number): string {
+  const d = new Date();
+  d.setHours(Math.floor(hour) % 24, Math.round((hour % 1) * 60), 0, 0);
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 const QUESTION_KINDS: CueKind[] = ["q1", "q2", "q3", "q4", "q5"];
@@ -186,6 +229,7 @@ export default function TalkClient() {
   // a backup to the brain's own closing signal).
   const historyRef = useRef<ConversationTurn[]>([]);
   const recentRef = useRef<RecentJournalItem[]>([]);
+  const todayRef = useRef<TodayJournalItem[]>([]);
   const bitsRef = useRef("");
   const backgroundChoiceRef = useRef<FinalChoice | null>(null);
   // Answer capture path: "api" (record + /api/transcribe) until the
@@ -339,6 +383,53 @@ export default function TalkClient() {
       }));
   }
 
+  // Today's entries only, oldest first — built once at begin() from
+  // the same listEntries() read as the recent summary.
+  function buildTodayJournal(entries: JournalEntry[], excludeId: string | null): TodayJournalItem[] {
+    const todayStr = new Date().toDateString();
+    return entries
+      .filter((e) => e.id !== excludeId && new Date(e.createdAt).toDateString() === todayStr)
+      .slice(0, 8)
+      .reverse()
+      .map((e) => ({
+        time: new Date(e.createdAt).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        context: e.context,
+        need: e.need,
+        urge: e.urgeIntensity,
+        urgeAfter: e.urgeAfter,
+        choice: e.choice,
+        learning: e.learning,
+      }));
+  }
+
+  // Risk-window state from the plan's declared windows, if it carries
+  // any (no setup surface collects them yet — normally none, and the
+  // route treats absence as "no window claims"). Windows may wrap
+  // past midnight (start after end).
+  function computeRiskWindow(plan: ShieldPlan, now: Date): RiskWindowContext {
+    const windows = plan.riskWindows ?? [];
+    if (!windows.length) return { inWindow: false };
+    const hour = now.getHours() + now.getMinutes() / 60;
+    const active = windows.find((w) =>
+      w.startHour <= w.endHour
+        ? hour >= w.startHour && hour < w.endHour
+        : hour >= w.startHour || hour < w.endHour,
+    );
+    if (active) return { inWindow: true, label: active.label };
+    let next: { label: string; startHour: number; delta: number } | null = null;
+    for (const w of windows) {
+      let delta = w.startHour - hour;
+      if (delta <= 0) delta += 24;
+      if (!next || delta < next.delta) next = { label: w.label, startHour: w.startHour, delta };
+    }
+    return next
+      ? { inWindow: false, nextLabel: next.label, nextStartsAt: formatHour(next.startHour) }
+      : { inWindow: false };
+  }
+
   interface BrainReply {
     say: string;
     done: boolean;
@@ -352,6 +443,11 @@ export default function TalkClient() {
   async function converseTurn(): Promise<BrainReply | "not-configured" | null> {
     const plan = planRef.current;
     if (!plan) return null;
+    // Time context is computed fresh and sent on EVERY turn, not just
+    // the first: the brain reasons with the clock, the day type, and
+    // the declared-window state all the way through the conversation.
+    const now = new Date();
+    const hour = now.getHours();
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
@@ -362,6 +458,10 @@ export default function TalkClient() {
           directness: plan.directness ?? null,
           recentJournal: recentRef.current,
           driving: answersRef.current.driving,
+          localTime: { hour, partOfDay: partOfDayFor(hour) },
+          dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
+          riskWindow: computeRiskWindow(plan, now),
+          todayJournal: todayRef.current,
         }),
       });
       if (!res.ok) {
@@ -825,8 +925,10 @@ export default function TalkClient() {
     try {
       const entries = await listEntries();
       recentRef.current = buildRecentJournal(entries, entry?.id ?? null);
+      todayRef.current = buildTodayJournal(entries, entry?.id ?? null);
     } catch {
       recentRef.current = [];
+      todayRef.current = [];
     }
     // The recorded cue still opens the session, exactly as in SOS —
     // Talk It Through runs after it, inside the same session.
@@ -848,6 +950,16 @@ export default function TalkClient() {
       const res = await converseTurn();
       if (!aliveRef.current) return;
       if (res === "not-configured") {
+        // The scripted flow opens personably too: a warm, plain
+        // greeting shaped by the part of day, then the spine's first
+        // question as before.
+        const greet = openerLine(partOfDayFor(new Date().getHours()));
+        setCurrentLine(greet);
+        setStatus("");
+        historyRef.current.push({ role: "brain", text: greet });
+        persistTranscriptNote();
+        await speakAloud(greet);
+        if (!aliveRef.current) return;
         await askQuestion("q1");
         return;
       }
