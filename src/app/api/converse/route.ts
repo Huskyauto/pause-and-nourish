@@ -27,6 +27,13 @@
 // window state, and today's journal, injected as a compact context
 // block. The personable and time blocks live in this file for now;
 // they should be absorbed into baseline v1.2 when it's revised.
+//
+// Story-intake layer (2026-10-31): when the client sends a profile
+// (a new user's "Your story" intake — name, story, triggers), the
+// prompt is rebuilt around THAT user: their story is the ground
+// truth about them, and the founder baseline rides as a worked
+// example / template with explicit precedence language. No profile
+// in the request = the founder path, byte-for-byte what it was.
 
 import { metaApiKey, metaChat, MetaApiError } from "@/lib/meta";
 import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
@@ -41,7 +48,7 @@ import {
   type GuidedActionKind,
   type SessionOutcomeItem,
 } from "@/lib/actions";
-import type { Directness, ShieldPlan } from "@/lib/journal";
+import type { Directness, ShieldPlan, UserProfile } from "@/lib/journal";
 
 export interface ConverseTurn {
   role: "brain" | "user";
@@ -219,6 +226,81 @@ His rhythm (from the baseline): morning is his protected anchor — the walk com
 What you offer must FIT the hour and the setting. His playbook is the only material — but which card fits is a time question: a walk is a morning or early-evening card, not an 11:30 PM one; late at night, the cards that fit are the in-home ones — his stocked swaps, a ninety-second tool, his reset line. If he's inside a declared risk window, you know it, and you can say so plainly, the way he planned it at calm time: "We're in your evening window — this is the one you planned for." If a window is coming later today, that can shape a calm-time conversation ("your evening window's ahead — anything you want stocked?") — only from his playbook, never invented prep.`;
 }
 
+// ---------- The story-intake path (new users) ----------
+//
+// Everything above this section is the founder's path, unchanged:
+// Bob's phone runs no intake (his baseline WAS his intake, mined
+// from his own history), so with no profile in the request the
+// prompt is exactly what it has always been. When a user HAS run
+// the "Your story" intake, the client sends their profile and the
+// prompt changes in kind, not just in name: their own story becomes
+// the ground truth about them, and the founder baseline is demoted
+// to what it is for them — a worked example, a template for the
+// SHAPE of a filled-in second brain, never a source of facts about
+// them. The precedence is stated in the prompt itself, twice.
+
+function personableProfileBlock(profile: UserProfile): string {
+  const name = profile.name.trim();
+  return `PERSONABLE COMPANION — HOW YOU ARE WITH THEM:
+
+The person you are talking with is ${name}. Use their name the way someone who knows them would: at the greeting, at real moments — when something lands, when the moment is heavy, when you're closing — and sparingly. Their name in every line sounds like a script; their name at the right moments sounds like a friend. A few times across a conversation, not once a sentence.
+
+WHEN THE CONVERSATION IS JUST STARTING (no turns yet), you open — you do not wait to be asked:
+- Greet them by name, warmly, shaped by the part of day in the context below: "Morning, ${name} —" in the morning, "Evening, ${name} —" in the evening.
+- Ask how they're doing — how the day's been. Asking is always right; never tell them what they're feeling. Their state comes from their words, not your guess.
+- Naturally check whether urges have shown up today — "Any urges so far today?" — plainly, the way someone who knows their patterns would ask.
+- If today's journal (in the context below) shows earlier entries, acknowledge ONE concretely, in their own recorded words where they're there: the moment they paused through, the urge that dropped, the learning they saved — quote their learning back in their words. That is how they know you remember them.
+
+TWO ENERGIES, ONE PERSON:
+- Live urge: if their first reply — or any turn — signals an urge happening now, the warmth compresses to one warm sentence ("I'm here, ${name}") and you move straight into the moment: the coverage above, their playbook, the pause. Personable never means chatty in a hard moment.
+- Calm time: if they're reflecting, unhurried is the whole point. Follow their thread, ask the next real question, remember what they tell you and quote it back later so the memory shows.
+
+VOICE, ALWAYS: plain words — hunger, the urge, the urge to eat. Never the word "pull". No therapy-speak, no pep-talk clichés, no inflated praise. Someone who knows them and is in their corner, at the directness they chose.`;
+}
+
+function timeProfileBlock(): string {
+  return `TIME & ENVIRONMENT — THE CLOCK IS PART OF THE CONVERSATION:
+
+Every turn, the context below tells you the local time, the part of day, whether it's a weekday or a weekend, and whether they are inside a risk window they declared at calm time. Reason with it — woven in naturally, never announced robotically, and never narrate your own reasoning about it.
+
+Their rhythm — when their hard moments tend to come, what their days look like — comes from THEIR story (below) and their journal, never from anyone else's pattern. A weekend day has a different shape from a workday — different pressures, different openings.
+
+What you offer must FIT the hour and the setting. Their playbook is the only material — but which card fits is a time question: a walk is a morning or early-evening card, not an 11:30 PM one; late at night, the cards that fit are the in-home ones — their stocked swaps, a ninety-second tool, their reset line. If they're inside a declared risk window, you know it, and you can say so plainly, the way they planned it at calm time: "We're in your evening window — this is the one you planned for." If a window is coming later today, that can shape a calm-time conversation ("your evening window's ahead — anything you want stocked?") — only from their playbook, never invented prep.`;
+}
+
+// The user's own story, as a prompt section. This is the intake's
+// payload: the material their brain deals back. The precedence
+// language here (and again in the final word) is the load-bearing
+// part — their words about themselves outrank the template below.
+function userStorySection(profile: UserProfile): string {
+  const lines: string[] = [
+    "THE USER'S OWN STORY — THE GROUND TRUTH ABOUT THIS PERSON:",
+    "",
+    `Their name: ${profile.name.trim()}`,
+  ];
+  if (profile.story.trim()) {
+    lines.push(`Their story, in their own words (told at calm time, when they set the app up):`);
+    lines.push(`"${profile.story.trim()}"`);
+  }
+  if (profile.triggers.length) {
+    lines.push(
+      `The moments they say get them (their words): ${profile.triggers.map((t) => t.trim()).filter(Boolean).join("; ")}`,
+    );
+  }
+  lines.push(
+    "",
+    "PRECEDENCE: this story outranks the worked example below, everywhere the two could differ. Their words about themselves are what is true about them. Never attribute the example person's name, history, numbers, places, job, people, or patterns to this user — and where this user has not said a thing about themselves, it is simply unknown: ask, don't borrow.",
+  );
+  return lines.join("\n");
+}
+
+// The founder baseline, framed for a profile user: a worked example
+// of a filled-in second brain — the shape to work in, never facts
+// about the person in front of the brain.
+const BASELINE_TEMPLATE_FRAMING = `A WORKED EXAMPLE — ONE PERSON'S FILLED-IN SECOND BRAIN, KEPT ONLY AS A TEMPLATE:
+
+What follows is the second-brain baseline of the person who built this app — one complete worked example of what a person's story, patterns, voice rules, and playbook look like once they're filled in. Use it ONLY for the shape: how a story becomes patterns to recognize and a playbook to deal back; the tone rules (plain words, quote their own words back to them, no shame, no moral language); the playbook order (their why first, their if-then, a function-matched swap, a ninety-second tool, then eat / swap / delay — all legitimate); and the respawn shape after someone eats (checkpoint saved, nothing reset, on to the next meal). It is NOT about the user you are talking with. Its name, history, numbers, places, job, and people belong to someone else — never greet this user by that name, never use its facts as theirs, and never treat its patterns as this user's patterns. Where the user's own story (above) covers the same kind of ground in their words, use THEIR version, always.`;
+
 // The second-brain baseline (Part B of the baseline document, in
 // src/lib/baseline.ts) rides in the system prompt on every turn as
 // its own delimited section, so the brain knows this person — his
@@ -227,8 +309,17 @@ What you offer must FIT the hour and the setting. His playbook is the only mater
 // the final word: if any baseline phrasing could be read as
 // advice-giving, the reflect/recall-only rules win. The baseline
 // text itself is never edited here.
-function fullSystemPrompt(directness: Directness, hasSwap: boolean, hasReplacement: boolean): string {
-  return `${systemPrompt(directness)}
+function fullSystemPrompt(
+  directness: Directness,
+  hasSwap: boolean,
+  hasReplacement: boolean,
+  profile: UserProfile | null,
+): string {
+  if (!profile) {
+    // The founder's path — this composition is byte-for-byte what it
+    // has always been. Do not "improve" it here; Bob's prompt is a
+    // tuned artifact.
+    return `${systemPrompt(directness)}
 
 ${guidedActionBlock(hasSwap, hasReplacement)}
 
@@ -241,6 +332,45 @@ SECOND-BRAIN BASELINE — WHO THIS PERSON IS, HIS PATTERNS, HIS VOICE, AND THE M
 ${SECOND_BRAIN_BASELINE}
 
 FINAL WORD — THE FENCE GOVERNS THE BASELINE: the hard rules above outrank everything in the baseline. Your material is this person's own playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the baseline could be read as advice-giving, this fence wins and that reading is not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>, "action": <{"kind": "<guided-action kind>"}|null>}, with "action" set only on a proposal line, exactly as the guided-action section describes.`;
+  }
+  // The intake path: same fence, same repertoire, same playbook
+  // mechanics — but the person is THIS user, their story is the
+  // ground truth, and the founder baseline rides as a template.
+  return `${systemPrompt(directness)}
+
+${guidedActionBlock(hasSwap, hasReplacement)}
+
+${personableProfileBlock(profile)}
+
+${timeProfileBlock()}
+
+${userStorySection(profile)}
+
+${BASELINE_TEMPLATE_FRAMING}
+
+${SECOND_BRAIN_BASELINE}
+
+FINAL WORD — THE FENCE GOVERNS, AND THE USER'S OWN STORY GOVERNS THE EXAMPLE: the hard rules above outrank everything below them. Your material is this person's own story, playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the worked example could be read as advice-giving, this fence wins and that reading is not used. And the precedence, one last time: the user's own story outranks the worked example everywhere they could conflict — where they differ, the example is simply not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>, "action": <{"kind": "<guided-action kind>"}|null>}, with "action" set only on a proposal line, exactly as the guided-action section describes.`;
+}
+
+// The story-intake profile, coerced like everything else the client
+// sends: a name is required for the profile to count at all (an
+// empty name means no intake has run and the request takes the
+// founder path), the story and triggers are capped plain text.
+function coerceProfile(raw: unknown): UserProfile | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as { name?: unknown; story?: unknown; triggers?: unknown };
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const name = str(p.name, 80);
+  if (!name) return null;
+  const triggers: string[] = [];
+  if (Array.isArray(p.triggers)) {
+    for (const t of p.triggers.slice(0, 16)) {
+      const s = str(t, 160);
+      if (s) triggers.push(s);
+    }
+  }
+  return { name, story: str(p.story, 4000), triggers };
 }
 
 function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string {
@@ -295,8 +425,25 @@ function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string 
 // as his record, never as a detected pattern, and steers away from
 // what he marked as not working. Device-built from his journal;
 // every field is his declared data.
-function sessionRecordContext(outcomes: SessionOutcomeItem[]): string {
+function sessionRecordContext(outcomes: SessionOutcomeItem[], profile: UserProfile | null): string {
   if (!outcomes.length) return "";
+  if (profile) {
+    const lines: string[] = [
+      "THEIR SESSION RECORD — their recent talk sessions and the outcomes THEY marked at the close of each (their own record, stated as their record — never as something you detected):",
+    ];
+    for (const item of outcomes) {
+      const bits: string[] = [item.date];
+      bits.push(item.action ? `guided action: ${item.action}` : "talk only, no guided action");
+      if (item.choice) bits.push(`chose: ${item.choice}`);
+      if (item.outcome === "good") bits.push("they marked it: a good outcome");
+      if (item.outcome === "work-on") bits.push("they marked it: one to work on (it didn't land for them)");
+      lines.push(`- ${bits.join(", ")}`);
+    }
+    lines.push(
+      "How to use this: when you propose a guided action, one they marked good is a fair first offer, and you may say so in their own terms (\"the breathing was a good one Tuesday\"). One they marked as one to work on, don't push in the same form — a different action, or the same one reshaped by what they tell you now. If they have no mark on an action, it is simply untried, not failed.",
+    );
+    return lines.join("\n");
+  }
   const lines: string[] = [
     "HIS SESSION RECORD — his recent talk sessions and the outcomes HE marked at the close of each (his own record, stated as his record — never as something you detected):",
   ];
@@ -333,8 +480,13 @@ function momentContext(
   dayType: DayType | null,
   riskWindow: RiskWindowContext | null,
   today: TodayJournalItem[],
+  profile: UserProfile | null,
 ): string {
-  const lines: string[] = ["RIGHT NOW AND HIS DAY SO FAR (declared context — nothing here is inferred):"];
+  const lines: string[] = [
+    profile
+      ? "RIGHT NOW AND THEIR DAY SO FAR (declared context — nothing here is inferred):"
+      : "RIGHT NOW AND HIS DAY SO FAR (declared context — nothing here is inferred):",
+  ];
   if (localTime) {
     lines.push(
       `- Local time: ${localTime.hour >= 0 ? `hour ${localTime.hour}, ` : ""}${localTime.partOfDay}${dayType ? `, a ${dayType}` : ""}.`,
@@ -345,11 +497,15 @@ function momentContext(
   }
   if (riskWindow?.inWindow) {
     lines.push(
-      `- He is INSIDE a risk window he declared at calm time${riskWindow.label ? `: "${riskWindow.label}"` : ""}.`,
+      profile
+        ? `- They are INSIDE a risk window they declared at calm time${riskWindow.label ? `: "${riskWindow.label}"` : ""}.`
+        : `- He is INSIDE a risk window he declared at calm time${riskWindow.label ? `: "${riskWindow.label}"` : ""}.`,
     );
   } else if (riskWindow?.nextLabel) {
     lines.push(
-      `- Not in a declared risk window right now. His next one: "${riskWindow.nextLabel}"${riskWindow.nextStartsAt ? `, starting ${riskWindow.nextStartsAt}` : ""}.`,
+      profile
+        ? `- Not in a declared risk window right now. Their next one: "${riskWindow.nextLabel}"${riskWindow.nextStartsAt ? `, starting ${riskWindow.nextStartsAt}` : ""}.`
+        : `- Not in a declared risk window right now. His next one: "${riskWindow.nextLabel}"${riskWindow.nextStartsAt ? `, starting ${riskWindow.nextStartsAt}` : ""}.`,
     );
   }
   if (today.length) {
@@ -371,14 +527,39 @@ function momentContext(
   return lines.join("\n");
 }
 
+// The intake path's deterministic openers — the same warm shapes as
+// spine's founder openers, with this user's name filled in.
+function profileOpener(partOfDay: PartOfDay | null | undefined, name: string): string {
+  switch (partOfDay) {
+    case "morning":
+      return `Morning, ${name} — how'd you sleep, and how's the day looking?`;
+    case "afternoon":
+      return `Hey, ${name} — how's the day treating you? Any urges show up so far?`;
+    case "evening":
+      return `Evening, ${name} — how are you doing tonight? Any urges show up today?`;
+    case "night":
+      return `Hey, ${name} — it's late. How are you doing tonight? Something on your mind?`;
+    default:
+      return `Hey, ${name} — how are you doing? Any urges show up today?`;
+  }
+}
+
 // The deterministic line for when the model can't be reached or its
 // reply can't be used: a personable opener shaped by the part of day
 // if nothing has been said, a plain warm prompt after that. Never a
-// dead end.
-function fallbackLine(history: ConverseTurn[], localTime: LocalTimeContext | null): string {
-  return history.length === 0
-    ? openerLine(localTime?.partOfDay)
-    : "I'm right here, Bob. Tell me what's happening right now.";
+// dead end. With an intake profile, the name is the user's; without
+// one, the founder's lines stand exactly as they were.
+function fallbackLine(
+  history: ConverseTurn[],
+  localTime: LocalTimeContext | null,
+  profile: UserProfile | null,
+): string {
+  if (history.length === 0) {
+    return profile
+      ? profileOpener(localTime?.partOfDay, profile.name.trim())
+      : openerLine(localTime?.partOfDay);
+  }
+  return `I'm right here, ${profile ? profile.name.trim() : "Bob"}. Tell me what's happening right now.`;
 }
 
 function coerceHistory(raw: unknown): ConverseTurn[] {
@@ -499,9 +680,168 @@ function coerceToday(raw: unknown): TodayJournalItem[] {
   return out;
 }
 
+// ------------------------------------------------------------------
+// Story-intake interview (Bob's ruling, 2026-10-31): "Your story" is
+// a CONVERSATION, not a form. In intake mode the brain interviews a
+// new user one spoken question at a time, follow-ups adapting to
+// what they said, until its coverage checklist is met — then it
+// closes and returns the captured items for the client to write to
+// the profile/plan stores. Coverage is judged from the exchange
+// itself; nothing is inferred about emotions. There is NO scripted
+// fallback in this mode: if the brain can't be reached, the route
+// returns an honest error and the client says so plainly and offers
+// the type-it-instead surface. (The founder's recorded deal-backs
+// and SOS flows are untouched — those are his own words, not stock
+// conversation.)
+// ------------------------------------------------------------------
+
+export interface IntakeSwap {
+  situation: string;
+  option: string;
+}
+
+export interface IntakeCaptured {
+  name: string;
+  story: string;
+  whyLine: string;
+  triggers: string[];
+  swaps: IntakeSwap[];
+  voice: "female" | "male";
+}
+
+const INTAKE_SYSTEM_PROMPT = [
+  "You are the second brain inside Pause & Nourish, a habit-interruption companion, meeting a brand-new user for the first time. This is a calm-time getting-to-know-you conversation, spoken out loud, one question at a time. There is no form and no paperwork — you ask, they answer out loud, and what they tell you becomes the story their second brain will deal back to them later, in their own words.",
+  "",
+  "YOUR COVERAGE — the interview is complete only when the exchange itself has given you ALL of these, in the user's own words or by their explicit say-so:",
+  "1. Their name — what they want to be called.",
+  "2. Their voice choice — the voice you're speaking in right now is a woman's voice. Early (right after the name), ask plainly whether they'd like to keep this voice or switch to a man's voice. Set \"voice\" in your JSON the moment they answer, and keep setting it on every reply after that.",
+  "3. Their story — where they're starting from and what they're working on, in their words. A few sentences is plenty; follow up once or twice on what they actually said rather than marching down a list.",
+  "4. A why line — the reason that matters to THEM, in their words. When they give you a reason, offer it back as their line (\"want that as your line, in those words?\") and capture their phrasing, not a polished version of it.",
+  "5. At least one trigger — a moment, place, or situation that gets them: evenings, a room, a routine, a kind of day.",
+  "6. At least one swap — one thing they could reach for instead in that moment — OR their explicit \"none yet,\" which is a complete and respected answer (capture an empty swaps list then). Eating the thing is always a legitimate choice here; a swap is an option they stock for themselves, never a rule.",
+  "",
+  "HOW YOU TALK: one question per reply, one or two short spoken sentences — these lines are read aloud. Warm, plain, unhurried. Follow up on what they said before moving to the next coverage item; adapt the order to the conversation. React to their answers briefly and specifically, in their own terms. When coverage is complete, close warmly in one or two sentences (name them, tell them their story is saved and they can change any of it any time, and that talking is always one tap away) and return done=true with the full captured object.",
+  "",
+  "HARD RULES: Never infer or name their emotions or mental state — if it matters, they say it and you may reflect their words back. Never give advice, recommendations, or health guidance; you gather THEIR words, you don't supply your own. No therapy vocabulary. The word \"pull\" is banned. Wellness framing only: this is a habit tool, not treatment. Never claim to be human; you are their second brain, an AI companion, and that's fine to say if it's relevant. Keep captured text faithful: the story is their account condensed only as much as needed, the why line is their sentence, triggers and swaps are short phrases in their words.",
+  "",
+  "OUTPUT: reply with ONE JSON object and nothing else:",
+  "{\"say\": string, \"done\": boolean, \"voice\": \"female\" | \"male\" | null, \"captured\": null | {\"name\": string, \"story\": string, \"whyLine\": string, \"triggers\": string[], \"swaps\": [{\"situation\": string, \"option\": string}], \"voice\": \"female\" | \"male\"}}",
+  "\"say\" is the only part spoken aloud. \"captured\" is null until done=true; on the closing reply it carries everything the exchange established (voice inside captured is their final pick). If they said \"none yet\" to swaps, swaps is [].",
+].join("\n");
+
+function coerceCaptured(raw: unknown): IntakeCaptured | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as { name?: unknown; story?: unknown; whyLine?: unknown; triggers?: unknown; swaps?: unknown; voice?: unknown };
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const name = str(c.name, 80);
+  if (!name) return null;
+  const triggers: string[] = [];
+  if (Array.isArray(c.triggers)) {
+    for (const t of c.triggers.slice(0, 16)) {
+      const s = str(t, 160);
+      if (s) triggers.push(s);
+    }
+  }
+  const swaps: IntakeSwap[] = [];
+  if (Array.isArray(c.swaps)) {
+    for (const s of c.swaps.slice(0, 12)) {
+      if (!s || typeof s !== "object") continue;
+      const item = s as { situation?: unknown; option?: unknown };
+      const situation = str(item.situation, 160);
+      const option = str(item.option, 160);
+      if (situation && option) swaps.push({ situation, option });
+    }
+  }
+  return {
+    name,
+    story: str(c.story, 4000),
+    whyLine: str(c.whyLine, 300),
+    triggers,
+    swaps,
+    voice: c.voice === "male" ? "male" : "female",
+  };
+}
+
+async function handleIntake(history: ConverseTurn[]): Promise<Response> {
+  if (!metaApiKey()) {
+    return Response.json({ error: "meta_not_configured" }, { status: 500 });
+  }
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: INTAKE_SYSTEM_PROMPT },
+  ];
+  for (const turn of history) {
+    messages.push({
+      role: turn.role === "brain" ? "assistant" : "user",
+      content: turn.text,
+    });
+  }
+  if (history.length === 0) {
+    messages.push({
+      role: "user",
+      content:
+        "(I just opened Your Story for the first time. Open warmly in one or two short sentences: you're glad they're here, this is a few spoken questions so the app can work in their own words, and ask what they'd like to be called.)",
+    });
+  }
+  let generated: string;
+  try {
+    generated = await metaChat(messages);
+  } catch (err) {
+    if (err instanceof MetaApiError && err.message === "meta_not_configured") {
+      return Response.json({ error: "meta_not_configured" }, { status: 500 });
+    }
+    // Honest unavailability — never a fabricated interview line.
+    return Response.json(
+      { error: "brain_unavailable", detail: err instanceof MetaApiError ? err.detail : undefined },
+      { status: 502 },
+    );
+  }
+  let say: string | null = null;
+  let done = false;
+  let voice: "female" | "male" | null = null;
+  let captured: IntakeCaptured | null = null;
+  const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
+  const start = jsonText.indexOf("{");
+  const end = jsonText.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(jsonText.slice(start, end + 1)) as {
+        say?: unknown;
+        done?: unknown;
+        voice?: unknown;
+        captured?: unknown;
+      };
+      if (typeof parsed.say === "string" && parsed.say.trim()) {
+        say = parsed.say.trim();
+        if (parsed.voice === "female" || parsed.voice === "male") {
+          voice = parsed.voice;
+        }
+        captured = coerceCaptured(parsed.captured);
+        // A close only counts when the captured story came with it.
+        done = parsed.done === true && captured !== null;
+        if (!done) captured = null;
+      }
+    } catch {
+      // Not JSON — fall through to the plain-line treatment.
+    }
+  }
+  if (say === null && generated.trim()) {
+    say = generated.trim();
+  }
+  if (say === null) {
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+  }
+  const filtered = filterGeneratedLine(say, "");
+  if (!filtered) {
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+  }
+  return Response.json({ say: filtered, done, voice, captured, source: "meta" });
+}
+
 export async function POST(request: Request) {
   let history: ConverseTurn[] = [];
+  let mode: string | null = null;
   let plan: ShieldPlan | null = null;
+  let profile: UserProfile | null = null;
   let directness: Directness = "straight";
   let recent: RecentJournalItem[] = [];
   let driving = false;
@@ -514,7 +854,9 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       history?: unknown;
+      mode?: unknown;
       shieldPlan?: ShieldPlan;
+      profile?: unknown;
       directness?: unknown;
       recentJournal?: unknown;
       driving?: unknown;
@@ -526,7 +868,9 @@ export async function POST(request: Request) {
       event?: unknown;
     };
     history = coerceHistory(body?.history);
+    mode = typeof body?.mode === "string" ? body.mode : null;
     plan = body?.shieldPlan ?? null;
+    profile = coerceProfile(body?.profile);
     if (body?.directness === "gentle" || body?.directness === "straight" || body?.directness === "short") {
       directness = body.directness;
     }
@@ -542,11 +886,17 @@ export async function POST(request: Request) {
     // Malformed body falls through to the guards below.
   }
 
+  // The story-intake interview runs before the plan guard: a new
+  // user has no plan yet — the interview is how it gets built.
+  if (mode === "intake") {
+    return handleIntake(history);
+  }
+
   if (!plan) {
     return Response.json({ error: "conversation_state_required" }, { status: 400 });
   }
 
-  const fallback = fallbackLine(history, localTime);
+  const fallback = fallbackLine(history, localTime, profile);
 
   if (!metaApiKey()) {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -565,11 +915,11 @@ export async function POST(request: Request) {
   );
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement) },
-    { role: "user", content: momentContext(localTime, dayType, riskWindow, today) },
+    { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement, profile) },
+    { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
-  const record = sessionRecordContext(sessionOutcomes);
+  const record = sessionRecordContext(sessionOutcomes, profile);
   if (record) {
     messages.push({ role: "user", content: record });
   }

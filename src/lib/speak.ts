@@ -1,6 +1,10 @@
 // Fish voice-out, client side (2026-10-29): the one shared way to ask
-// /api/speak to say a line in the user's own cloned voice and play what
-// comes back. Deliberately quiet in both directions — Fish credits are
+// /api/speak to say a line and play what comes back. For the founder
+// that's his own cloned voice; an intake user passes their chosen
+// neutral voice ("female" | "male") and the server speaks in that
+// stock voice instead (Bob's ruling, 2026-10-31) — the founder's clone
+// is never lent to another user. Omitting the voice = the founder
+// path, exactly as before. Deliberately quiet in both directions — Fish credits are
 // metered, so the SOS and pause flows fire this at most once per flow,
 // and every failure (network, key not configured yet, Fish error,
 // blocked autoplay) is silent. The words are always already on screen
@@ -11,14 +15,16 @@
 // IS the Fish voice, spoken line by line via speakLineChecked below —
 // the user's recordings still outrank it there too.
 
-export async function speakLine(text: string): Promise<void> {
+import type { ProfileVoice } from "./journal";
+
+export async function speakLine(text: string, voice?: ProfileVoice): Promise<void> {
   const line = text.trim();
   if (!line) return;
   try {
     const res = await fetch("/api/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: line }),
+      body: JSON.stringify(voice ? { text: line, voice } : { text: line }),
     });
     if (!res.ok) return;
     const blob = await res.blob();
@@ -37,7 +43,7 @@ export async function speakLine(text: string): Promise<void> {
 // question is done before it starts listening for the answer, and its
 // fallback chain may drop to the phone voice only when Fish itself
 // failed. Failures are still silent — the boolean is the only signal.
-export async function speakLineChecked(text: string): Promise<boolean> {
+export async function speakLineChecked(text: string, voice?: ProfileVoice): Promise<boolean> {
   const line = text.trim();
   if (!line) return false;
   let res: Response;
@@ -45,7 +51,7 @@ export async function speakLineChecked(text: string): Promise<boolean> {
     res = await fetch("/api/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: line }),
+      body: JSON.stringify(voice ? { text: line, voice } : { text: line }),
     });
   } catch {
     return false;

@@ -8,13 +8,17 @@ import {
   EMPTY_SHIELD_PLAN,
   getCue,
   getShieldPlan,
+  getUserProfile,
   hasCue,
+  hasUserProfile,
   listEntries,
   saveShieldPlan,
   updateEntry,
   type CueKind,
   type JournalEntry,
   type ShieldPlan,
+  type ProfileVoice,
+  type UserProfile,
 } from "@/lib/journal";
 import {
   assemblePlan,
@@ -277,6 +281,11 @@ export default function TalkClient() {
   const entryRef = useRef<JournalEntry | null>(null);
   const answersRef = useRef<TalkAnswers>({ ...EMPTY_ANSWERS });
   const planRef = useRef<ShieldPlan | null>(null);
+  // The user's story intake, when one has run (a saved name). Sent
+  // with every converse call so the brain greets THIS user by name
+  // and works from their story; null on the founder's phone, where
+  // the route's behavior is exactly what it has always been.
+  const profileRef = useRef<UserProfile | null>(null);
   const retriesRef = useRef<Record<string, number>>({});
   // Free-form conversation state: the running transcript (also the
   // /api/converse payload), the declared-history summary, and the
@@ -420,14 +429,26 @@ export default function TalkClient() {
     return chunks;
   }
 
+  // Which generated voice speaks for this user (Bob's ruling,
+  // 2026-10-31): an intake user hears the neutral stock voice they
+  // picked at intake — an unchosen pick defaults to the female stock
+  // voice — and NEVER the founder's clone. No profile = the founder:
+  // no voice field is sent and /api/speak uses his clone, as always.
+  function speechVoice(): ProfileVoice | undefined {
+    const profile = profileRef.current;
+    if (!profile) return undefined;
+    return profile.voice ?? "female";
+  }
+
   // The conversation's automatic voice (Bob's directive, 2026-10-30):
-  // Fish — the user's cloned voice, via speakLineChecked → /api/speak —
-  // speaks every dynamic line. The phone's voice is used only for a
-  // part Fish itself failed to speak.
+  // Fish, via speakLineChecked → /api/speak, speaks every dynamic
+  // line — the founder's clone for him, an intake user's chosen
+  // neutral stock voice for them. The phone's voice is used only for
+  // a part Fish itself failed to speak.
   async function speakAloud(text: string): Promise<void> {
     for (const chunk of chunkForSpeak(text)) {
       if (!aliveRef.current) return;
-      if (!(await speakLineChecked(chunk))) {
+      if (!(await speakLineChecked(chunk, speechVoice()))) {
         await phoneSpeak(chunk);
       }
     }
@@ -550,6 +571,7 @@ export default function TalkClient() {
         body: JSON.stringify({
           history: historyRef.current.slice(-24),
           shieldPlan: plan,
+          profile: hasUserProfile(profileRef.current) ? profileRef.current : null,
           directness: plan.directness ?? null,
           recentJournal: recentRef.current,
           driving: answersRef.current.driving,
@@ -1104,6 +1126,12 @@ export default function TalkClient() {
     } catch {
       planRef.current = { ...EMPTY_SHIELD_PLAN };
     }
+    try {
+      const profile = await getUserProfile();
+      profileRef.current = hasUserProfile(profile) ? profile : null;
+    } catch {
+      profileRef.current = null;
+    }
     const entry = await addEntry({ source: "talk" }).catch(() => null);
     entryRef.current = entry;
     // The declared-history summary rides along with every brain call.
@@ -1276,8 +1304,13 @@ export default function TalkClient() {
         freeformRef.current = false;
         // The scripted flow opens personably too: a warm, plain
         // greeting shaped by the part of day, then the spine's first
-        // question as before.
-        const greet = openerLine(partOfDayFor(new Date().getHours()));
+        // question as before. The deterministic openers are written
+        // with the founder's name; when a story intake has run, the
+        // greeting carries THIS user's name instead.
+        const profileName = profileRef.current?.name.trim();
+        const greet = profileName
+          ? openerLine(partOfDayFor(new Date().getHours())).replace("Bob", () => profileName)
+          : openerLine(partOfDayFor(new Date().getHours()));
         setCurrentLine(greet);
         setStatus("");
         historyRef.current.push({ role: "brain", text: greet });

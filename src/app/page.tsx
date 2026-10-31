@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import CheckInCount from "@/components/CheckInCount";
-import { getCue } from "@/lib/journal";
+import { getCue, getUserProfile, hasUserProfile } from "@/lib/journal";
 import { RecordingSlot, SCRIPT_A } from "./shield/VoiceCueSetup";
 
 // Voice-first home (Oct 29 revamp, Bob's direction after using the app):
@@ -42,6 +42,10 @@ export default function Home() {
   // reports the real stored state as soon as it loads, and on every
   // save/delete after that.
   const [hasCue, setHasCue] = useState(false);
+  // The story intake's first-run state: no profile saved → home
+  // surfaces "Start with your story". It never gates anything — SOS
+  // and Talk with me work with zero intake, profile or not.
+  const [hasProfile, setHasProfile] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [editingVoice, setEditingVoice] = useState(false);
   const [cueUrl, setCueUrl] = useState<string | null>(null);
@@ -66,6 +70,19 @@ export default function Home() {
     setJustSaved(false);
     setEditingVoice(false);
   }
+
+  // Load the story-intake state (a saved name = the intake has run).
+  useEffect(() => {
+    let live = true;
+    getUserProfile()
+      .then((p) => {
+        if (live) setHasProfile(hasUserProfile(p));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // Load the saved cue for the "Play my voice" button.
   useEffect(() => {
@@ -225,7 +242,36 @@ export default function Home() {
         </>
       )}
 
+      {!hasProfile && (
+        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <p className="font-semibold text-stone-900">New here? Start with your story.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
+            A couple of calm-time minutes of talking: your second brain asks a few questions, you
+            answer out loud, and your story — in your words — is what it deals back to you in a
+            hard moment. Skip it if you like — nothing is gated, and you can add to it any time.
+          </p>
+          <Link
+            href="/story/interview"
+            className="mt-4 inline-block rounded-full border border-[#2f5d3a] px-6 py-3 font-semibold text-[#2f5d3a] transition hover:bg-[#f2f6ef]"
+          >
+            Start with your story
+          </Link>
+          <p className="mt-3 text-sm text-stone-600">
+            <Link href="/story" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+              or type it instead
+            </Link>
+          </p>
+        </section>
+      )}
+
       <SecondaryLinks />
+      {hasProfile && (
+        <div className="mt-3 text-center">
+          <Link href="/story" className={secondaryLinkClass}>
+            Your story
+          </Link>
+        </div>
+      )}
       <div className="text-center">
         <CheckInCount />
       </div>

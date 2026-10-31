@@ -106,6 +106,42 @@ export const EMPTY_SHIELD_PLAN: ShieldPlan = {
   whyLine: "",
 };
 
+// The user's own story (new-user intake, "Your story"): who this
+// person is, in their words — the material a new user's second brain
+// deals back, the same role the founder's mined baseline plays for
+// him. Stored alongside the Shield Plan in the same key-value store
+// (its own key), on-device only. The why line, swaps, thought pairs,
+// and word-for-today deliberately do NOT live here — they ride the
+// Shield Plan fields that already exist, so intake and setup can
+// never disagree about them.
+// The neutral default voice an intake user picks for their second
+// brain (Bob's ruling, 2026-10-31): a new user has no clone of their
+// own (that would need their own Fish setup), so the generated voice
+// is a neutral stock voice — chosen by the user, never presumed.
+// Their own recordings still outrank any selected voice, everywhere.
+export type ProfileVoice = "female" | "male";
+
+export interface UserProfile {
+  name: string; // the one required field — an empty name means no intake has run
+  story: string; // where they're starting from, what they're working on — free text, their words
+  triggers: string[]; // the moments/situations they say get them, in their words
+  voice?: ProfileVoice | null; // neutral stock voice for generated speech; null = unchosen
+}
+
+export const EMPTY_USER_PROFILE: UserProfile = {
+  name: "",
+  story: "",
+  triggers: [],
+  voice: null,
+};
+
+// A profile "exists" — for first-run surfacing and for the converse
+// route's precedence rules — exactly when a name was saved. Everything
+// else in the intake is optional and can be empty forever.
+export function hasUserProfile(profile: UserProfile | null | undefined): boolean {
+  return !!profile && profile.name.trim().length > 0;
+}
+
 const DB_NAME = "pause-and-nourish";
 // v4 (Day 5): no schema change — the prompt-pack kinds are new KEYS in
 // the existing voiceCue store, not new stores. The bump exists so the
@@ -115,10 +151,12 @@ const DB_VERSION = 4;
 const JOURNAL_STORE = "journal";
 const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
+const PROFILE_KEY = "profile";
 const CUE_STORE = "voiceCue";
 
 const LS_JOURNAL = "pn.journal";
 const LS_SHIELD = "pn.shieldPlan";
+const LS_PROFILE = "pn.userProfile";
 const LS_CUE = "pn.voiceCue";
 const LS_RESET_CUE = "pn.voiceResetCue";
 
@@ -206,6 +244,24 @@ async function idbSaveShieldPlan(plan: ShieldPlan): Promise<void> {
   const tx = db.transaction(SHIELD_STORE, "readwrite");
   await idbRequest(
     tx.objectStore(SHIELD_STORE).put({ key: SHIELD_KEY, plan, updatedAt: new Date().toISOString() }),
+  );
+  db.close();
+}
+
+async function idbGetUserProfile(): Promise<UserProfile> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readonly");
+  const rec = await idbRequest(tx.objectStore(SHIELD_STORE).get(PROFILE_KEY));
+  db.close();
+  const profile = (rec as { profile?: UserProfile } | undefined)?.profile;
+  return profile ? { ...EMPTY_USER_PROFILE, ...profile } : { ...EMPTY_USER_PROFILE };
+}
+
+async function idbSaveUserProfile(profile: UserProfile): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readwrite");
+  await idbRequest(
+    tx.objectStore(SHIELD_STORE).put({ key: PROFILE_KEY, profile, updatedAt: new Date().toISOString() }),
   );
   db.close();
 }
@@ -362,6 +418,20 @@ export async function getShieldPlan(): Promise<ShieldPlan> {
   }));
 }
 
+export async function getUserProfile(): Promise<UserProfile> {
+  return withFallback(idbGetUserProfile, () => ({
+    ...EMPTY_USER_PROFILE,
+    ...lsRead<UserProfile>(LS_PROFILE, { ...EMPTY_USER_PROFILE }),
+  }));
+}
+
+export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  await withFallback(
+    () => idbSaveUserProfile(profile),
+    () => lsWrite(LS_PROFILE, profile),
+  );
+}
+
 // ---------- Voice cue public API ----------
 
 export async function saveCue(blob: Blob, kind: CueKind = "cue"): Promise<void> {
@@ -427,8 +497,8 @@ export async function saveShieldPlan(plan: ShieldPlan): Promise<void> {
 }
 
 // Delete EVERYTHING on this device (README promise, wired Day 5): the
-// journal, the Shield Plan, and every voice recording — cue, reset line,
-// and the whole prompt pack. Clears both backends unconditionally (not
+// journal, the Shield Plan, the user profile/story (same store), and
+// every voice recording — cue, reset line, and the whole prompt pack. Clears both backends unconditionally (not
 // via withFallback): a store cleared in IndexedDB must not leave a
 // localStorage copy behind from an earlier fallback period, or vice
 // versa. Best-effort per store — one failing clear never blocks the rest.
@@ -448,6 +518,7 @@ export async function deleteEverything(): Promise<void> {
   try {
     lsWrite(LS_JOURNAL, []);
     localStorage.removeItem(LS_SHIELD);
+    localStorage.removeItem(LS_PROFILE);
     for (const kind of CUE_KINDS) {
       localStorage.removeItem(lsCueKey(kind));
     }
