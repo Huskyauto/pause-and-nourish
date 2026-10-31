@@ -345,6 +345,20 @@ export default function ShieldPage() {
         <DirectnessSection plan={plan} onUpdate={update} />
       </section>
 
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">A companion for your pocket</h2>
+        <p className="mt-1 text-sm leading-relaxed text-stone-600">
+          A companion app can one day hear an earbud press and play your cue with the screen
+          off. The pairing and session controls are ready for it now.
+        </p>
+        <Link
+          href="/companion"
+          className="mt-3 inline-block font-medium text-[#2f5d3a] underline underline-offset-4"
+        >
+          Open the companion page
+        </Link>
+      </section>
+
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>Wellness info only, not medical advice.</p>
       </footer>

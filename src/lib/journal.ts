@@ -195,12 +195,14 @@ const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
 const PROFILE_KEY = "profile";
 const PLACES_KEY = "places";
+const COMPANION_KEY = "companion";
 const CUE_STORE = "voiceCue";
 
 const LS_JOURNAL = "pn.journal";
 const LS_SHIELD = "pn.shieldPlan";
 const LS_PROFILE = "pn.userProfile";
 const LS_PLACES = "pn.places";
+const LS_COMPANION = "pn.companion";
 const LS_CUE = "pn.voiceCue";
 const LS_RESET_CUE = "pn.voiceResetCue";
 
@@ -317,6 +319,30 @@ async function idbGetPlaces(): Promise<SavedPlace[]> {
   db.close();
   const places = (rec as { places?: SavedPlace[] } | undefined)?.places;
   return Array.isArray(places) ? places : [];
+}
+
+// The companion record (Component A, connector slice §2): the whole
+// protocol state as one JSON string, owned by companion-protocol/ and
+// stored here as an opaque record in the same key-value store, under
+// its own key — the same pattern as places, so journal payloads can
+// never carry it. Digests only ever live inside it (the protocol
+// module's promise); this layer just moves the string.
+async function idbGetCompanionRecord(): Promise<string | null> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readonly");
+  const rec = await idbRequest(tx.objectStore(SHIELD_STORE).get(COMPANION_KEY));
+  db.close();
+  const record = (rec as { record?: string } | undefined)?.record;
+  return typeof record === "string" ? record : null;
+}
+
+async function idbSaveCompanionRecord(record: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readwrite");
+  await idbRequest(
+    tx.objectStore(SHIELD_STORE).put({ key: COMPANION_KEY, record, updatedAt: new Date().toISOString() }),
+  );
+  db.close();
 }
 
 async function idbSavePlaces(places: SavedPlace[]): Promise<void> {
@@ -507,6 +533,38 @@ export async function savePlaces(places: SavedPlace[]): Promise<void> {
   );
 }
 
+// ---------- Companion record (opaque protocol state — see above) ----------
+
+export async function getCompanionRecord(): Promise<string | null> {
+  return withFallback(idbGetCompanionRecord, () => {
+    try {
+      return localStorage.getItem(LS_COMPANION);
+    } catch {
+      return null;
+    }
+  });
+}
+
+export async function saveCompanionRecord(record: string): Promise<void> {
+  await withFallback(
+    () => idbSaveCompanionRecord(record),
+    () => lsWrite(LS_COMPANION, record),
+  );
+}
+
+export async function clearCompanionRecord(): Promise<void> {
+  await withFallback(
+    () => idbSaveCompanionRecord(""),
+    () => {
+      try {
+        localStorage.removeItem(LS_COMPANION);
+      } catch {
+        // Nothing to clear.
+      }
+    },
+  );
+}
+
 // ---------- Voice cue public API ----------
 
 export async function saveCue(blob: Blob, kind: CueKind = "cue"): Promise<void> {
@@ -595,6 +653,7 @@ export async function deleteEverything(): Promise<void> {
     localStorage.removeItem(LS_SHIELD);
     localStorage.removeItem(LS_PROFILE);
     localStorage.removeItem(LS_PLACES);
+    localStorage.removeItem(LS_COMPANION);
     for (const kind of CUE_KINDS) {
       localStorage.removeItem(lsCueKey(kind));
     }

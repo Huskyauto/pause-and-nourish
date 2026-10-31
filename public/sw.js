@@ -1,10 +1,11 @@
-const CACHE = "pause-and-nourish-v30";
+const CACHE = "pause-and-nourish-v31";
 const CORE = [
   "/",
   "/check-in",
   "/pause",
   "/dashboard",
   "/shield",
+  "/companion",
   "/story",
   "/story/interview",
   "/talk",
