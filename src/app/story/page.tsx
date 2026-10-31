@@ -255,9 +255,8 @@ export default function StoryPage() {
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your second brain&apos;s voice</h2>
         <p className="mt-1 text-sm leading-relaxed text-stone-600">
-          Pick the voice that sounds right for your second brain. These are neutral voices — your
-          own recordings, once you make them, always come first, and this voice only speaks when
-          there&apos;s no recording of you. Change it any time.
+          Pick the voice that sounds right for your second brain. These are neutral voices — this
+          is the voice your second brain speaks with. Change it any time.
         </p>
         <div className="mt-3 flex flex-wrap gap-3">
           {(

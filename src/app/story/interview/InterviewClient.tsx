@@ -464,7 +464,11 @@ export default function InterviewClient() {
         </div>
       )}
 
-      {status && <p className="mt-5 text-center text-stone-600">{status}</p>}
+      {status && (
+        <p className="mt-5 text-center text-stone-600" aria-live="polite">
+          {status}
+        </p>
+      )}
 
       {phase === "ready" && (
         <div className="mt-6 text-center">

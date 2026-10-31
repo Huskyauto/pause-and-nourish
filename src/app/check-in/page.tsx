@@ -429,8 +429,8 @@ export default function CheckInPage() {
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
         <p>
-          Saved only on this device. Your journal never leaves your phone unless you choose to reflect on an entry
-          with the companion (coming Day 5).
+          Saved only on this device. When you talk with your second brain, it sees a short summary of
+          recent entries so it can deal your own plan back to you — the journal itself stays here.
         </p>
         <p className="mt-2">Wellness info only, not medical advice.</p>
       </footer>

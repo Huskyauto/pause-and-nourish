@@ -1059,8 +1059,8 @@ export default function TalkClient() {
     }
     // The conversation opens with the brain's own live greeting —
     // the /api/converse opener on empty history, spoken Fish-first
-    // (Bob's directive, 2026-10-31). The recorded moment cue belongs
-    // to SOS; it never starts Talk It Through.
+    // (Bob's directive, 2026-10-31). No recording opens it — since
+    // the all-canned-out purge, no recording opens any live flow.
     await runFreeform();
   }
 
@@ -1216,7 +1216,12 @@ export default function TalkClient() {
     for (let turn = 0; turn < 14; turn++) {
       brainThink();
       const res = await converseTurn();
-      if (!aliveRef.current) return;
+      // sessionOver: "End conversation" was tapped while this turn
+      // was in flight — closeSession is already running the close
+      // (including its own outcome capture), so this loop must not
+      // speak the late reply or open a second capture (code review,
+      // 2026-10-31).
+      if (!aliveRef.current || sessionOverRef.current) return;
       if (res === "not-configured" || res === "unavailable" || res === null) {
         await showUnavailable();
         return;
@@ -1227,7 +1232,7 @@ export default function TalkClient() {
       historyRef.current.push({ role: "brain", text: res.say });
       persistTranscriptNote();
       await speakBrainLine(res.say);
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || sessionOverRef.current) return;
       if (res.done) {
         await closeSession(res.choice, res.say);
         return;

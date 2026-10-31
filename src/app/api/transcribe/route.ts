@@ -8,7 +8,7 @@
 
 import { metaApiKey, metaTranscribe, MetaApiError } from "@/lib/meta";
 
-const MAX_AUDIO_BYTES = 12 * 1024 * 1024; // a 12-second answer is ~200 KB
+const MAX_AUDIO_BYTES = 12 * 1024 * 1024; // a full 120-second answer at 16 kHz WAV is ≈3.8 MB; the cap leaves headroom
 
 export async function POST(request: Request) {
   if (!metaApiKey()) {

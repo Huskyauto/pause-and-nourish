@@ -65,11 +65,13 @@ export interface JournalEntry {
   sessionOutcome?: "good" | "work-on" | null;
 }
 
-// Day 5: the prompt pack joins the two moment recordings — q1..q5 are
-// the Talk It Through spine questions, recorded once at calm time in the
-// user's own voice so the conversation asks in their voice at zero
-// generated-voice cost. All kinds share the one voiceCue store, keyed by
-// kind; the Day 3 "cue" and Day 4 "reset" keys are unchanged.
+// Recording kinds in the one voiceCue store, keyed by kind. "reset"
+// (Day 4) is the one recording still played anywhere — inside the
+// guided reset step. "cue" (Day 3) and "q1".."q5" (the Day 5 prompt
+// pack) are retired kinds: nothing records or plays them since the
+// all-canned-out purge (2026-10-31), but the keys stay in the enum
+// so stored recordings remain addressable — and deletable — data.
+// The Day 3 "cue" and Day 4 "reset" keys are unchanged.
 export type CueKind = "cue" | "reset" | "q1" | "q2" | "q3" | "q4" | "q5";
 
 export const CUE_KINDS: CueKind[] = ["cue", "reset", "q1", "q2", "q3", "q4", "q5"];
@@ -144,7 +146,8 @@ export const EMPTY_SHIELD_PLAN: ShieldPlan = {
 // brain (Bob's ruling, 2026-10-31): a new user has no clone of their
 // own (that would need their own Fish setup), so the generated voice
 // is a neutral stock voice — chosen by the user, never presumed.
-// Their own recordings still outrank any selected voice, everywhere.
+// (The generated voice speaks every conversational line; a user's
+// own recording plays only inside the guided reset step.)
 export type ProfileVoice = "female" | "male";
 
 export interface UserProfile {
@@ -267,13 +270,6 @@ async function idbGetEntry(id: string): Promise<JournalEntry | null> {
   const found = await idbRequest(tx.objectStore(JOURNAL_STORE).get(id));
   db.close();
   return (found as JournalEntry | undefined) ?? null;
-}
-
-async function idbClearJournal(): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(JOURNAL_STORE, "readwrite");
-  await idbRequest(tx.objectStore(JOURNAL_STORE).clear());
-  db.close();
 }
 
 async function idbGetShieldPlan(): Promise<ShieldPlan> {
@@ -495,10 +491,6 @@ export async function getEntry(id: string): Promise<JournalEntry | null> {
   );
 }
 
-export async function clearAll(): Promise<void> {
-  await withFallback(idbClearJournal, () => lsWrite(LS_JOURNAL, []));
-}
-
 export async function getShieldPlan(): Promise<ShieldPlan> {
   return withFallback(idbGetShieldPlan, () => ({
     ...EMPTY_SHIELD_PLAN,
@@ -573,16 +565,25 @@ export async function saveCue(blob: Blob, kind: CueKind = "cue"): Promise<void> 
     mimeType: blob.type || "audio/webm",
     recordedAt: new Date().toISOString(),
   };
-  await withFallback(
-    () => idbSaveCue(rec, kind),
-    () => {
-      // localStorage cannot hold a Blob — store a data URL instead.
-      const reader = new FileReader();
-      reader.onload = () =>
-        lsWrite(lsCueKey(kind), { dataUrl: String(reader.result), recordedAt: rec.recordedAt });
-      reader.readAsDataURL(blob);
-    },
-  );
+  if (typeof indexedDB !== "undefined") {
+    try {
+      await idbSaveCue(rec, kind);
+      return;
+    } catch {
+      // Fall through to the localStorage copy below.
+    }
+  }
+  // localStorage cannot hold a Blob — store a data URL instead. The
+  // read is awaited (code review, 2026-10-31): the old fire-and-forget
+  // FileReader let saveCue resolve before the write landed, so a
+  // hasCue/getCue right after saving could miss the recording.
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  lsWrite(lsCueKey(kind), { dataUrl, recordedAt: rec.recordedAt });
 }
 
 export async function getCue(kind: CueKind = "cue"): Promise<CueRecord | null> {
@@ -603,10 +604,6 @@ export async function getCue(kind: CueKind = "cue"): Promise<CueRecord | null> {
   } catch {
     return null;
   }
-}
-
-export async function hasCue(kind: CueKind = "cue"): Promise<boolean> {
-  return (await getCue(kind)) !== null;
 }
 
 export async function deleteCue(kind: CueKind = "cue"): Promise<void> {
@@ -654,11 +651,24 @@ export async function deleteEverything(): Promise<void> {
     localStorage.removeItem(LS_PROFILE);
     localStorage.removeItem(LS_PLACES);
     localStorage.removeItem(LS_COMPANION);
+    // The geolocation-granted flag (src/lib/places.ts) — a bare flag,
+    // not user content, but "delete everything" should leave no
+    // app state behind (code review, 2026-10-31).
+    localStorage.removeItem("pn.geoGranted");
     for (const kind of CUE_KINDS) {
       localStorage.removeItem(lsCueKey(kind));
     }
   } catch {
     // Storage blocked entirely — nothing more this device lets us do.
+  }
+  try {
+    // The SOS flow's session guards (src/app/pause/PauseClient.tsx)
+    // hold only an entry id and a timestamp — cleared too, so a
+    // deleted entry's id is never resurrected by a later SOS.
+    sessionStorage.removeItem("pn.sosEntry");
+    sessionStorage.removeItem("pn.sosLine");
+  } catch {
+    // sessionStorage blocked — the guards expire with the tab anyway.
   }
 }
 

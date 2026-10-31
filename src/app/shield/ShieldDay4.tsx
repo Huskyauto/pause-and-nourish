@@ -165,11 +165,18 @@ export function VoiceChoiceSection({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
 
-  // The preview must play what the moment will actually play — and the
-  // moment (the SOS screen) plays the recording whenever one exists.
-  // So: a saved recording always wins here, whatever the stored choice
-  // says. TTS is used only when phone voice is the picked channel and
-  // no recording exists, and it is labeled as the phone's voice.
+  // The preview plays the saved moment-cue recording whenever one
+  // exists, so he can hear what he recorded. Since the all-canned-out
+  // purge (2026-10-31) no recording plays in a live flow — the brain
+  // composes every spoken line in the moment — so this preview is a
+  // calm-time listen-back, not a rehearsal of the moment. (The one
+  // recording that still plays anywhere is the reset line, inside
+  // the guided reset step; it has its own player in its own section
+  // below.) TTS is used only when phone voice is the picked channel
+  // and no recording exists, and it is labeled as the phone's voice.
+  // (Comment corrected in the 2026-10-31 code review — the earlier
+  // text claimed the SOS screen plays the recording, which the purge
+  // removed.)
   useEffect(() => {
     let live = true;
     getCue("cue")
@@ -224,9 +231,7 @@ export function VoiceChoiceSection({
         .play()
         .then(() => {
           if (audioRef.current === audio) {
-            setPreviewNote(
-              "That was your recording — your own voice, the one that plays in the moment.",
-            );
+            setPreviewNote("That was your recording — your own voice.");
           }
         })
         .catch(() => {
@@ -258,7 +263,7 @@ export function VoiceChoiceSection({
       return;
     }
     setPreviewNote(
-      "Nothing of yours to play yet. In the moment, your why shows on screen in words — record your voice just below, and the preview will play you.",
+      "Nothing of yours to play yet — no recording is saved on this device. In the moment, your why shows on screen in words.",
     );
   }
 
@@ -290,7 +295,7 @@ export function VoiceChoiceSection({
       </div>
       {cueUrl && plan.voiceChoice !== "own" && (
         <p className="mt-3 text-sm leading-relaxed text-stone-600">
-          You have a recording saved — that&apos;s what plays in the moment, whatever is picked here.
+          You have a recording saved — you can hear it with the preview below.
         </p>
       )}
       <button

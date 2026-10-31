@@ -8,12 +8,13 @@
 // metered, so the SOS and pause flows fire this at most once per flow,
 // and every failure (network, key not configured yet, Fish error,
 // blocked autoplay) is silent. The words are always already on screen
-// as text; the generated voice is a supplement to the user's own
-// recordings, never the only channel and never a replacement for them.
+// as text. Since the all-canned-out purge (2026-10-31) the generated
+// voice is the ONLY spoken channel in live flows — no recording opens
+// or interrupts them; the single exception is the user's recorded
+// reset line, played by the Talk flow inside the guided reset step.
 // The Talk It Through conversation is the exception to the once-per-
 // flow discipline: by Bob's directive (2026-10-30) its automatic voice
-// IS the Fish voice, spoken line by line via speakLineChecked below —
-// the user's recordings still outrank it there too.
+// IS the Fish voice, spoken line by line via speakLineChecked below.
 
 import type { ProfileVoice } from "./journal";
 

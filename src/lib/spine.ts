@@ -1,22 +1,32 @@
-// Talk It Through — the spoken spine (Day 5 build note v1.0, 2026-10-30).
+// Talk It Through — background capture + the output filter
+// (Day 5 build note v1.0, 2026-10-30; pruned in the code review,
+// 2026-10-31).
 //
-// Pure module, no I/O: the client state machine and /api/converse share
-// it, so the conversation runs identically whether Muse Spark phrases
-// the lines or the deterministic fallback does. The rules baked in:
-//   - The brain asks; the user answers out loud; structured values
-//     (urge number, hunger-vs-pull, eat/swap/delay) are parsed HERE,
-//     deterministically, from the user's explicit words. The LLM never
-//     infers them, and nothing here detects or infers an emotion —
-//     every answer is user-declared (Illinois WOPR boundary).
-//   - The game plan is assembled ONLY from the user's own saved
-//     playbook. A missing playbook item skips its step — never invented.
-//   - "Something sweet" is a target food, not a need; "end of day" is a
-//     risk window, not a need (taxonomy pass, 2026-10-30).
+// Pure module, no I/O. What lives here now, after the free-form
+// revision and the all-canned-out purge:
+//   - The deterministic parsers. The brain holds the conversation;
+//     these read each user turn in the BACKGROUND and fill the
+//     journal's structured fields (context + the driving gate, hunger
+//     kind, urge number, need, choice) from the user's explicit words
+//     only. The LLM never infers them, and nothing here detects or
+//     infers an emotion — every answer is user-declared (Illinois
+//     WOPR boundary).
+//   - Plan assembly (assemblePlan / dealtSwap): the finished screen's
+//     plan card, dealt ONLY from the user's own saved playbook. A
+//     missing playbook item skips its element — never invented.
+//   - The output filter (filterGeneratedLine), applied by
+//     /api/converse to every model line before it can be spoken.
+// The scripted spine that used to steer the flow from here — the
+// fixed questions, the stage machine, the deterministic phrasing and
+// openers — was removed with the flows that used it; nothing canned
+// speaks anymore. Taxonomy rules kept from the Day 5 pass:
+// "something sweet" is a target food, not a need; "end of day" is a
+// risk window, not a need.
 
-import { matchPlannedResponse, type Directness, type Need, type ShieldPlan } from "./journal";
+import { matchPlannedResponse, type Need, type ShieldPlan } from "./journal";
 import { toolForNeed } from "./tools";
 
-export type QuestionId = "q1" | "q2" | "q3" | "q4" | "q5";
+export type PartOfDay = "morning" | "afternoon" | "evening" | "night";
 export type HungerKind = "body" | "pull" | "both";
 export type BranchChoice = "pause" | "reset" | "long";
 export type FinalChoice = "eat" | "swap" | "delay";
@@ -44,58 +54,6 @@ export const EMPTY_ANSWERS: TalkAnswers = {
   window: null,
   branch: null,
 };
-
-// The fixed spine questions — these exact words are the prompt-pack
-// scripts (recorded once at calm time in the user's own voice).
-export const SPINE_QUESTIONS: { id: QuestionId; text: string }[] = [
-  { id: "q1", text: "Where are you right now?" },
-  { id: "q2", text: "Is this body hunger, or the urge to eat — or both? Both can be true." },
-  { id: "q3", text: "How strong is the urge — one to five?" },
-  {
-    id: "q4",
-    text: "What do you actually need right now — a break, comfort, rest, a chance to unwind, something to do, or people?",
-  },
-  {
-    id: "q5",
-    text: "The urge is strong. Do you want the full ninety seconds, your reset line first, or the long pause — ten quiet minutes?",
-  },
-];
-
-export function questionText(id: QuestionId): string {
-  return SPINE_QUESTIONS.find((q) => q.id === id)?.text ?? "";
-}
-
-// ---------- Personable openers (deterministic fallback voice) ----------
-//
-// When the brain can't be reached (no key, Meta error), the first
-// line of a conversation is one of these: warm, personal, plain, and
-// shaped by the part of day the device reports. Few on purpose —
-// these are a safety net, not a script; the free-form brain opens in
-// its own words whenever it can. Shared by /api/converse (empty-
-// history fallback) and the client's offline scripted flow.
-
-export type PartOfDay = "morning" | "afternoon" | "evening" | "night";
-
-export const PERSONABLE_OPENERS: Record<PartOfDay, string> = {
-  morning: "Morning, Bob — how'd you sleep, and how's the day looking?",
-  afternoon: "Hey, Bob — how's the day treating you? Any urges show up so far?",
-  evening: "Evening, Bob — how are you feeling tonight? Any urges show up today?",
-  night: "Hey, Bob — it's late. How are you doing tonight? Something on your mind?",
-};
-
-export const NEUTRAL_OPENER = "Hey, Bob — how are you doing? Any urges show up today?";
-
-export function openerLine(partOfDay: PartOfDay | null | undefined): string {
-  return partOfDay ? PERSONABLE_OPENERS[partOfDay] : NEUTRAL_OPENER;
-}
-
-export const CHOICE_QUESTION = "So — eat it, have something else instead, or wait a bit? All three count.";
-
-export const EXIT_EAT_LINE =
-  "That's body hunger — that's what food is for. Eat, and enjoy it. No pause needed, nothing to fix.";
-
-export const DEFERRED_LINE =
-  "You're driving — eyes on the road. We'll talk it through when you're parked. Your plan is here when you stop.";
 
 // ---------- Deterministic parsing (explicit words only) ----------
 
@@ -180,52 +138,12 @@ export function parseNeed(text: string): NeedParse {
   return { need, targetFood, window: riskWindow };
 }
 
-export function parseBranch(text: string): BranchChoice | null {
-  const t = words(text);
-  if (/\b(long|ten|10|quiet minutes)\b/.test(t)) return "long";
-  if (/\b(reset)\b/.test(t)) return "reset";
-  if (/\b(ninety|90|full|surf\w*|tool|pause)\b/.test(t)) return "pause";
-  return null;
-}
-
 export function parseChoice(text: string): FinalChoice | null {
   const t = words(text);
   if (/\b(delay|wait|later|ten minutes|10 minutes)\b/.test(t)) return "delay";
   if (/\b(swap|instead|something else|other thing)\b/.test(t)) return "swap";
   if (/\b(eat|have it|yes|go ahead)\b/.test(t)) return "eat";
   return null;
-}
-
-// ---------- Flow ----------
-
-export type TalkStage =
-  | "q1"
-  | "q2"
-  | "q3"
-  | "q4"
-  | "q5"
-  | "plan"
-  | "choice"
-  | "exit-eat"
-  | "deferred"
-  | "pause-handoff"
-  | "done";
-
-// The next stage after a question was answered. Pure flow control —
-// the same table drives the client and validates /api/converse calls.
-export function nextStage(answers: TalkAnswers, justAnswered: QuestionId | "start"): TalkStage {
-  if (justAnswered === "start") return "q1";
-  if (justAnswered === "q1") return answers.driving ? "deferred" : "q2";
-  if (justAnswered === "q2") return answers.hungerKind === "body" ? "exit-eat" : "q3";
-  if (justAnswered === "q3") return "q4";
-  if (justAnswered === "q4") {
-    if ((answers.urge ?? 0) >= 4) return "q5";
-    return "plan";
-  }
-  // q5: a requested pause runs BEFORE the choice — the plan is dealt,
-  // then the existing pause flow carries the choice from there.
-  if (answers.branch === "pause" || answers.branch === "long") return "pause-handoff";
-  return "plan";
 }
 
 // ---------- Game-plan assembly (the user's own playbook only) ----------
@@ -291,64 +209,16 @@ export function dealtSwap(answers: TalkAnswers, plan: ShieldPlan): string | null
   return findSwap(answers, plan);
 }
 
-// ---------- Deterministic phrasing (the fallback voice of the spine) ----------
-
-export function phrasePlan(elements: PlanElement[], directness: Directness | null): string {
-  if (elements.length === 0) {
-    return "Your plan is the pause itself — ninety seconds, then you choose.";
-  }
-  const parts: string[] = [];
-  for (const el of elements) {
-    if (el.kind === "why") parts.push(el.text); // verbatim, no frame
-    else if (el.kind === "ifThen") parts.push(`Your if-then: ${el.text}.`);
-    else if (el.kind === "swap") parts.push(`What you'll have instead: ${el.text}.`);
-    else if (el.kind === "tool") parts.push(`Your ninety seconds: ${el.text}.`);
-  }
-  if (directness === "short") {
-    return parts.join(" ");
-  }
-  if (directness === "straight") {
-    return `Here's your plan. ${parts.join(" ")}`;
-  }
-  return `Here's your plan, in your own words. ${parts.join(" ")}`;
-}
-
-// The deterministic line for any stage — what /api/converse falls back
-// to, and what the client speaks when the Meta key isn't in yet.
-export function phraseStage(
-  stage: TalkStage,
-  answers: TalkAnswers,
-  plan: ShieldPlan,
-  directness: Directness | null,
-): string {
-  switch (stage) {
-    case "q1":
-    case "q2":
-    case "q3":
-    case "q4":
-    case "q5":
-      return questionText(stage);
-    case "plan":
-      return `${phrasePlan(assemblePlan(answers, plan), directness)} ${CHOICE_QUESTION}`;
-    case "choice":
-      return CHOICE_QUESTION;
-    case "exit-eat":
-      return EXIT_EAT_LINE;
-    case "deferred":
-      return DEFERRED_LINE;
-    default:
-      return "";
-  }
-}
-
 // ---------- Output filter ----------
 //
 // Any model-phrased line is scanned before it can be spoken. A hit on
-// advice / therapy / diet vocabulary replaces the whole line with the
-// deterministic phrasing (or a written reframe) — the companion reflects
-// the user's own words; it never advises, diagnoses, or prescribes.
-// The user's own verbatim playbook words are never filtered — this only
-// ever runs on generated text.
+// advice / therapy / diet vocabulary rejects the line: the function
+// returns the caller's fallback, and every caller in /api/converse
+// passes "" — so a rejected line means no brain line at all that
+// turn (a typed brain_unavailable), never a canned substitute. The
+// companion reflects the user's own words; it never advises,
+// diagnoses, or prescribes. The user's own verbatim playbook words
+// are never filtered — this only ever runs on generated text.
 
 const BLOCKED_PATTERNS: RegExp[] = [
   /\byou should\b/i,

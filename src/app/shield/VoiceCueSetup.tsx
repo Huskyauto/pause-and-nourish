@@ -340,13 +340,13 @@ export function ResetLineSetup() {
       initialScript={RESET_DEFAULT}
       copy={{
         intro:
-          "A second, shorter recording — for right after you eat. It plays on the checkpoint screen, in your own voice. On this device only.",
+          "A second, shorter recording — your own words for right after you eat. It plays inside the guided reset step, in your own voice, when your second brain leads that move. On this device only.",
         scriptLabel: "Words to say — edit them first.",
         recordLabel: "● Record my reset line",
         recordHint: "About 5 seconds is plenty — short is the point here.",
         savedMessage: "Your reset line is saved on this device.",
         savedFootnote:
-          "Re-recording replaces the saved reset line when you stop. It plays after you choose to eat.",
+          "Re-recording replaces the saved reset line when you stop. It plays inside the guided reset step.",
         deleteLabel: "Delete reset line",
       }}
     />

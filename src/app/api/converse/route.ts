@@ -359,6 +359,115 @@ ${SECOND_BRAIN_BASELINE}
 FINAL WORD — THE FENCE GOVERNS, AND THE USER'S OWN STORY GOVERNS THE EXAMPLE: the hard rules above outrank everything below them. Your material is this person's own story, playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the worked example could be read as advice-giving, this fence wins and that reading is not used. And the precedence, one last time: the user's own story outranks the worked example everywhere they could conflict — where they differ, the example is simply not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>, "action": <{"kind": "<guided-action kind>"}|null>}, with "action" set only on a proposal line, exactly as the guided-action section describes.`;
 }
 
+// The Shield Plan, coerced like everything else the client sends
+// (code review, 2026-10-31): the plan used to be taken as-is, and a
+// parseable-but-wrong-shaped plan (triggerOptions as a string,
+// whyLine as a number, missing arrays) threw a TypeError inside
+// playbookContext — an unhandled 500. Now every field the route
+// consumes is sanitized: strings capped, arrays filtered to
+// well-shaped entries, nested objects rebuilt field by field.
+// Returns null only when no plan was sent at all; a plan that is
+// present but not an object is rejected with a 400 in POST below.
+function coercePlan(raw: unknown): ShieldPlan | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  const p = raw as Record<string, unknown>;
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+  const optStr = (v: unknown, max: number) => {
+    const s = str(v, max);
+    return s ? s : null;
+  };
+  const strList = (v: unknown, maxItems: number, maxLen: number): string[] => {
+    if (!Array.isArray(v)) return [];
+    const out: string[] = [];
+    for (const item of v.slice(0, maxItems)) {
+      if (typeof item === "string") out.push(item.slice(0, maxLen));
+    }
+    return out;
+  };
+  const triggerOptions: ShieldPlan["triggerOptions"] = [];
+  if (Array.isArray(p.triggerOptions)) {
+    for (const entry of p.triggerOptions.slice(0, 16)) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as { trigger?: unknown; options?: unknown };
+      triggerOptions.push({
+        trigger: str(e.trigger, 160),
+        options: strList(e.options, 12, 160),
+      });
+    }
+  }
+  const thoughtPairs: ShieldPlan["thoughtPairs"] = [];
+  if (Array.isArray(p.thoughtPairs)) {
+    for (const pair of p.thoughtPairs.slice(0, 16)) {
+      if (!pair || typeof pair !== "object") continue;
+      const pr = pair as { negative?: unknown; positive?: unknown };
+      thoughtPairs.push({ negative: str(pr.negative, 300), positive: str(pr.positive, 300) });
+    }
+  }
+  let ifThen: ShieldPlan["ifThen"] = null;
+  if (p.ifThen && typeof p.ifThen === "object" && !Array.isArray(p.ifThen)) {
+    const it = p.ifThen as { when?: unknown; then?: unknown };
+    ifThen = { when: str(it.when, 300), then: str(it.then, 300) };
+  }
+  const riskWindows: NonNullable<ShieldPlan["riskWindows"]> = [];
+  if (Array.isArray(p.riskWindows)) {
+    for (const w of p.riskWindows.slice(0, 8)) {
+      if (!w || typeof w !== "object") continue;
+      const rw = w as { label?: unknown; startHour?: unknown; endHour?: unknown; days?: unknown };
+      if (typeof rw.startHour !== "number" || !Number.isFinite(rw.startHour)) continue;
+      if (typeof rw.endHour !== "number" || !Number.isFinite(rw.endHour)) continue;
+      const days = Array.isArray(rw.days)
+        ? rw.days.filter(
+            (d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6,
+          )
+        : undefined;
+      riskWindows.push({
+        label: str(rw.label, 60),
+        startHour: rw.startHour,
+        endHour: rw.endHour,
+        ...(days && days.length ? { days } : {}),
+      });
+    }
+  }
+  const directness =
+    p.directness === "gentle" || p.directness === "straight" || p.directness === "short"
+      ? p.directness
+      : null;
+  let directnessPending: ShieldPlan["directnessPending"] = null;
+  if (
+    p.directnessPending &&
+    typeof p.directnessPending === "object" &&
+    !Array.isArray(p.directnessPending)
+  ) {
+    const dp = p.directnessPending as { level?: unknown; effectiveFrom?: unknown };
+    if (
+      (dp.level === "gentle" || dp.level === "straight" || dp.level === "short") &&
+      typeof dp.effectiveFrom === "string"
+    ) {
+      directnessPending = { level: dp.level, effectiveFrom: dp.effectiveFrom.slice(0, 40) };
+    }
+  }
+  return {
+    triggerOptions,
+    dangerPlaces: strList(p.dangerPlaces, 16, 160),
+    thoughtPairs,
+    whyLine: str(p.whyLine, 300),
+    todayWord: optStr(p.todayWord, 40),
+    todayWordDate: optStr(p.todayWordDate, 40),
+    tomorrowScene: optStr(p.tomorrowScene, 600),
+    witnessPlan: optStr(p.witnessPlan, 400),
+    kindSentence: optStr(p.kindSentence, 300),
+    ifThen,
+    voiceChoice:
+      p.voiceChoice === "own" || p.voiceChoice === "phone" || p.voiceChoice === "later"
+        ? p.voiceChoice
+        : null,
+    riskWindows,
+    directness,
+    directnessPending,
+  };
+}
+
 // The story-intake profile, coerced like everything else the client
 // sends: a name is required for the profile to count at all (an
 // empty name means no intake has run and the request takes the
@@ -1011,7 +1120,7 @@ export async function POST(request: Request) {
       mode?: unknown;
       kind?: unknown;
       momentChoice?: unknown;
-      shieldPlan?: ShieldPlan;
+      shieldPlan?: unknown;
       profile?: unknown;
       directness?: unknown;
       recentJournal?: unknown;
@@ -1026,7 +1135,17 @@ export async function POST(request: Request) {
     };
     history = coerceHistory(body?.history);
     mode = typeof body?.mode === "string" ? body.mode : null;
-    plan = body?.shieldPlan ?? null;
+    // A plan that is present but not an object can never be coerced
+    // into a safe shape — reject it cleanly here (400) instead of
+    // letting a wrong-shaped plan throw deeper in the route (500).
+    if (
+      body?.shieldPlan !== undefined &&
+      body?.shieldPlan !== null &&
+      (typeof body.shieldPlan !== "object" || Array.isArray(body.shieldPlan))
+    ) {
+      return Response.json({ error: "invalid_shield_plan" }, { status: 400 });
+    }
+    plan = coercePlan(body?.shieldPlan);
     profile = coerceProfile(body?.profile);
     if (body?.directness === "gentle" || body?.directness === "straight" || body?.directness === "short") {
       directness = body.directness;

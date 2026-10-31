@@ -71,7 +71,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const audio = await fish.arrayBuffer();
+  let audio: ArrayBuffer;
+  try {
+    audio = await fish.arrayBuffer();
+  } catch {
+    // The body read itself failed (connection dropped mid-stream) —
+    // a typed 502, not an unhandled 500 (code review, 2026-10-31).
+    return Response.json({ error: "voice_service_error" }, { status: 502 });
+  }
   return new Response(audio, {
     status: 200,
     headers: { "Content-Type": "audio/mpeg" },
