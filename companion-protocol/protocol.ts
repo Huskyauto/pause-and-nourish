@@ -234,17 +234,6 @@ export async function createPairing(
   return { pairingId, pairingSecret, exchangeCode, requestedScopes: [...scopes], expiresAt };
 }
 
-/** The QR payload a companion would scan to learn the pairing. */
-export function pairingQrPayload(offer: PairingOffer): string {
-  return JSON.stringify({
-    v: 1,
-    kind: "pause-and-nourish-pairing",
-    pairingId: offer.pairingId,
-    secret: offer.pairingSecret,
-    code: offer.exchangeCode,
-  });
-}
-
 /** Owner approval — the only writer of the approved flag. */
 export async function approvePairing(store: CompanionStore): Promise<void> {
   const state = await loadState(store);
