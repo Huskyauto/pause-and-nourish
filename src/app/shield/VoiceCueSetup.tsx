@@ -10,20 +10,13 @@ import {
   type CueKind,
 } from "@/lib/journal";
 
-// The locked cue scripts (Second Brain + Voice Brief, adopted 2026-10-27,
-// Bob's lock 2026-10-28). A is the editable default suggestion — every
-// user's scene differs, so the words are theirs to change before recording.
-export const SCRIPT_A =
-  "Okay — couch, TV on. I want to feel good tomorrow morning — that's my why. Is this hunger, or the movie?";
-const SCRIPT_C = "I'm in it right now. I want to be kind to myself tomorrow. Hunger, or habit?";
-
 // Day 4: the reset line's editable default script (Day 4 spec v2.0 §2.4).
+// The moment-cue recorder that used to live here was retired under the
+// all-canned-out ruling (2026-10-31): nothing pre-recorded opens a live
+// flow, so there is no cue left to record. The reset line below is the
+// one calm-time recording that remains — it plays inside the guided
+// reset step, and its recorder stays.
 const RESET_DEFAULT = "Okay, that happened. I'm okay. Next meal as normal.";
-
-function scriptB(whyLine: string): string {
-  const why = whyLine.trim() || "I want to feel good tomorrow morning";
-  return `This is one of my tricky times. My why is: ${why}. What do I actually need right now?`;
-}
 
 const MAX_SECONDS = 15;
 
@@ -337,49 +330,6 @@ export function RecordingSlot({
         </>
       )}
     </div>
-  );
-}
-
-const chipClass =
-  "rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-[#2f5d3a] hover:text-[#2f5d3a]";
-
-export default function VoiceCueSetup({
-  whyLine,
-  onSavedChange,
-}: {
-  whyLine: string;
-  onSavedChange?: (has: boolean, reason: "load" | "save" | "delete") => void;
-}) {
-  return (
-    <RecordingSlot
-      kind="cue"
-      onSavedChange={onSavedChange}
-      initialScript={SCRIPT_A}
-      copy={{
-        intro:
-          "This is the voice that reaches you in a moment. Pick what sounds most like you on a good day. On this device only — it never leaves your phone.",
-        scriptLabel: "Words to say — edit them first. Your scene is yours.",
-        recordLabel: "● Record my cue",
-        recordHint: "About 10 seconds, in a normal voice, like you're talking yourself through it.",
-        savedMessage: "Your cue is saved on this device.",
-        savedFootnote:
-          "Re-recording replaces the saved cue when you stop. This is the voice that plays when you tap SOS.",
-        deleteLabel: "Delete cue",
-      }}
-      scriptExtras={(setScript) => (
-        <>
-          <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_A)}>
-            Starter words
-          </button>
-          <button type="button" className={chipClass} onClick={() => setScript(scriptB(whyLine))}>
-            Say it with my why
-          </button>
-          <button type="button" className={chipClass} onClick={() => setScript(SCRIPT_C)}>
-            Softer version
-          </button>
-        </>
-      )}
-    />
   );
 }
 

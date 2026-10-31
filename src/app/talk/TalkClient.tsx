@@ -9,12 +9,10 @@ import {
   getCue,
   getShieldPlan,
   getUserProfile,
-  hasCue,
   hasUserProfile,
   listEntries,
   saveShieldPlan,
   updateEntry,
-  type CueKind,
   type JournalEntry,
   type ShieldPlan,
   type ProfileVoice,
@@ -165,8 +163,6 @@ function formatHour(hour: number): string {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-const QUESTION_KINDS: CueKind[] = ["q1", "q2", "q3", "q4", "q5"];
-
 // The one status line of the can't-reach-the-brain state. It is a
 // status, not a conversation line: spoken once via Fish when Fish
 // answers (speakLineChecked — no phone-voice fallback), otherwise
@@ -273,7 +269,6 @@ export default function TalkClient() {
   const [planElements, setPlanElements] = useState<PlanElement[]>([]);
   const [finishKind, setFinishKind] = useState<FinishKind>(null);
   const [closingLine, setClosingLine] = useState("");
-  const [packIncomplete, setPackIncomplete] = useState(false);
   // Guided-action run state: while an action is being led, the screen
   // shows its name and the "End exercise" escape.
   const [actionRunning, setActionRunning] = useState(false);
@@ -1264,20 +1259,6 @@ export default function TalkClient() {
     await closeSession(null, "");
   }
 
-  // Is the prompt pack complete? Drives the one "for later" prompt.
-  useEffect(() => {
-    if (phase !== "finished") return;
-    let live = true;
-    Promise.all(QUESTION_KINDS.map((k) => hasCue(k).catch(() => false)))
-      .then((flags) => {
-        if (live) setPackIncomplete(flags.some((f) => !f));
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [phase]);
-
   if (phase === "ready") {
     return (
       <div className="mt-10">
@@ -1344,14 +1325,6 @@ export default function TalkClient() {
         <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <h2 className="font-semibold text-stone-900">For later — only if you want</h2>
           <ul className="mt-3 flex flex-col gap-3 text-stone-700">
-            {packIncomplete && (
-              <li>
-                <Link href="/prompt-pack" className="font-medium text-[#2f5d3a] underline underline-offset-4">
-                  Record the questions in your voice
-                </Link>{" "}
-                — so next time, the questions sound like you.
-              </li>
-            )}
             <li>
               <Link href="/shield" className="font-medium text-[#2f5d3a] underline underline-offset-4">
                 Add or change what you'll have instead

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { EMPTY_SHIELD_PLAN, getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
-import VoiceCueSetup, { ResetLineSetup } from "./VoiceCueSetup";
+import { ResetLineSetup } from "./VoiceCueSetup";
 import {
   applyDueDirectness,
   DirectnessSection,
@@ -24,7 +24,6 @@ export default function ShieldPage() {
   const [newPlace, setNewPlace] = useState("");
   const [newNegative, setNewNegative] = useState("");
   const [newPositive, setNewPositive] = useState("");
-  const [cueVersion, setCueVersion] = useState(0);
   // Fish voice-out test ("Hear my voice say it", under Your voice below):
   // one fixed line through /api/speak, played in the browser.
   const [speakState, setSpeakState] = useState<"idle" | "loading" | "error">("idle");
@@ -98,18 +97,6 @@ export default function ShieldPage() {
     }
   }
 
-  // The cue recorder sits directly under the voice choice at the top of
-  // this page. Saving a cue auto-sets the stored voice choice (own), and
-  // deleting clears it — pull the fresh plan so the choice section shows
-  // reality, and bump cueVersion so its preview re-checks the recording.
-  function handleCueChange(_has: boolean, reason: "load" | "save" | "delete") {
-    if (reason === "load") return;
-    setCueVersion((v) => v + 1);
-    getShieldPlan()
-      .then(setPlan)
-      .catch(() => {});
-  }
-
   if (!plan) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
@@ -134,12 +121,11 @@ export default function ShieldPage() {
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">How your second brain reaches you</h2>
-        <VoiceChoiceSection plan={plan} onUpdate={update} cueVersion={cueVersion} />
+        <VoiceChoiceSection plan={plan} onUpdate={update} />
       </section>
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
-        <VoiceCueSetup whyLine={plan.whyLine} onSavedChange={handleCueChange} />
         <div className="mt-5">
           <button
             type="button"
@@ -159,21 +145,6 @@ export default function ShieldPage() {
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your reset line</h2>
         <ResetLineSetup />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">The questions, in your voice</h2>
-        <p className="mt-1 text-sm leading-relaxed text-stone-600">
-          Talk It Through asks five questions. Record them here, once, in your own voice — and
-          that&apos;s the voice that asks in the moment. Any you skip, the phone&apos;s voice
-          covers.
-        </p>
-        <Link
-          href="/prompt-pack"
-          className="mt-4 inline-block rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
-        >
-          Record the questions
-        </Link>
       </section>
 
       <section className="mt-10">
