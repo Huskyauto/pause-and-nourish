@@ -33,6 +33,7 @@ import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
 import { filterGeneratedLine, openerLine, type PartOfDay } from "@/lib/spine";
 import {
   MODALITY_REPERTOIRE,
+  SITUATION_RANKING,
   actionLabel,
   isGuidedActionKind,
   type ConverseEvent,
@@ -134,18 +135,33 @@ Respond with ONLY a JSON object, no other text: {"say": "<the exact line to spea
 // re-proposed in the same conversation; a completed one is followed
 // by a plain "how does the urge sit now" — his declared number, the
 // same as the pause flow.
-function guidedActionBlock(hasSwap: boolean): string {
+function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean): string {
   const entries = MODALITY_REPERTOIRE.map((m) => {
     const fits = m.situations.join("; ");
-    const note =
-      m.id === "swap" && !hasSwap
-        ? " — NOT available right now: his plan has no stocked swaps saved, so do not propose it"
-        : "";
+    let note = "";
+    if (m.id === "swap" && !hasSwap) {
+      note = " — NOT available right now: his plan has no stocked swaps saved, so do not propose it";
+    }
+    if (m.id === "replacement-line" && !hasReplacement) {
+      note = " — NOT available right now: he has no thought pairs saved, so do not propose it";
+    }
     return `- "${m.id}" (${m.name}): fits ${fits}${note}`;
+  }).join("\n");
+  const rankings = SITUATION_RANKING.map((r) => {
+    const moves = r.moves.map((id) => `"${id}"`).join(" → ");
+    return `- ${r.situation}: ${moves}${r.note ? ` (${r.note})` : ""}`;
   }).join("\n");
   return `GUIDED ACTIONS — WHEN TALK HAS FOUND THE MOMENT, LEAD ONE:
 
-Once you have learned the shape of this moment — where he is, whether it's body hunger or the urge, how strong it is, what he needs — you may propose ONE guided action and, if he says yes, the app leads it step by step in voice. Choose the one that fits what he told you, this hour, and his record (his session record below shows what he has marked as working and what he hasn't — offer what he marked good first; don't push what he marked as one to work on, in the same form). The proposal line is spoken, one or two short sentences, ending as a genuine question he can say no to: "Why don't we start with five deep breaths?" is the shape. A pass is a complete answer — if he says no or not now, let it go entirely: no persuasion, no second offer of the same action this conversation, and the conversation simply continues. If he asks for an action himself, proposing that one is always right (when it's on the list and fits the hour).
+Once you have learned the shape of this moment — where he is, whether it's body hunger or the urge, how strong it is, what he needs — you may propose ONE guided action and, if he says yes, the app leads it step by step in voice. The proposal line is spoken, one or two short sentences, ending as a genuine question he can say no to: "Why don't we start with five deep breaths?" is the shape. A pass is a complete answer — if he says no or not now, let it go entirely: no persuasion, no second offer of the same action this conversation, and the conversation simply continues. If he asks for an action himself, proposing that one is always right (when it's on the list and fits the hour).
+
+HOW TO CHOOSE — IN THIS ORDER:
+1. HIS OWN SESSION RECORD (below) outranks everything: a move he has marked as a good outcome is the first offer for a moment like that one, and you may say so in his own terms ("the breathing was a good one Tuesday"); a move he marked as one to work on drops below its alternates — don't push it in the same form.
+2. THE SITUATION RANKINGS below: when this moment matches a situation, prefer its moves in the order given.
+Then fit: this hour, this place, what he just told you.
+
+SITUATION RANKINGS (his catalog's map — situation → moves in preference order):
+${rankings}
 
 THE REPERTOIRE — the only actions you may propose, by kind:
 ${entries}
@@ -199,10 +215,10 @@ What you offer must FIT the hour and the setting. His playbook is the only mater
 // the final word: if any baseline phrasing could be read as
 // advice-giving, the reflect/recall-only rules win. The baseline
 // text itself is never edited here.
-function fullSystemPrompt(directness: Directness, hasSwap: boolean): string {
+function fullSystemPrompt(directness: Directness, hasSwap: boolean, hasReplacement: boolean): string {
   return `${systemPrompt(directness)}
 
-${guidedActionBlock(hasSwap)}
+${guidedActionBlock(hasSwap, hasReplacement)}
 
 ${personableBlock()}
 
@@ -530,9 +546,14 @@ export async function POST(request: Request) {
   const hasSwap = plan.triggerOptions.some((entry) =>
     entry.options.some((option) => option.trim().length > 0),
   );
+  // Same gate for the replacement line: it speaks his own written
+  // thought pairs, so with none saved it is not offerable.
+  const hasReplacement = plan.thoughtPairs.some(
+    (pair) => pair.negative.trim().length > 0 && pair.positive.trim().length > 0,
+  );
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: fullSystemPrompt(directness, hasSwap) },
+    { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement) },
     { role: "user", content: momentContext(localTime, dayType, riskWindow, today) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
@@ -598,7 +619,11 @@ export async function POST(request: Request) {
           // unvalidated directive.
           if (!done) {
             const rawKind = (parsed.action as { kind?: unknown } | null)?.kind;
-            if (isGuidedActionKind(rawKind) && (rawKind !== "swap" || hasSwap)) {
+            if (
+              isGuidedActionKind(rawKind) &&
+              (rawKind !== "swap" || hasSwap) &&
+              (rawKind !== "replacement-line" || hasReplacement)
+            ) {
               action = { kind: rawKind };
             }
           }

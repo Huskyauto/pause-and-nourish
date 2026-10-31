@@ -41,6 +41,7 @@ import {
 } from "@/lib/spine";
 import { speakLineChecked } from "@/lib/speak";
 import {
+  NEED_SPOKEN,
   OUTCOME_QUESTION,
   actionLabel,
   actionSteps,
@@ -1080,9 +1081,13 @@ export default function TalkClient() {
     for (const { options } of plan.triggerOptions) {
       for (const option of options) if (option.trim()) stocked.push(option.trim());
     }
+    const pair = plan.thoughtPairs.find((p) => p.negative.trim() && p.positive.trim());
     const steps = actionSteps(kind, {
       swapText: swapEl?.text ?? stocked[0] ?? null,
       whyLine: plan.whyLine.trim() || null,
+      replacementText: pair ? pair.positive.trim() : null,
+      placeText: answersRef.current.context,
+      needText: answersRef.current.need ? (NEED_SPOKEN[answersRef.current.need] ?? null) : null,
     });
     if (!steps.length) return;
     actionRanRef.current = true;
