@@ -10,7 +10,8 @@ import {
   type ShieldPlan,
   type UserProfile,
 } from "@/lib/journal";
-import { speakLineChecked } from "@/lib/speak";
+import { createSpeechPipeline, type SpeechPipeline } from "@/lib/speak";
+import { recognizeOnce, speechRecognitionAvailable } from "@/lib/recognize";
 import { transcribeBlob } from "@/lib/wav";
 import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 
@@ -31,6 +32,13 @@ import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 const ANSWER_SILENCE_MS = 1800;
 const ANSWER_MAX_MS = 120000;
 const SPEECH_RMS_THRESHOLD = 0.02;
+// Latency build (2026-10-31), mirroring TalkClient: an auto-opened
+// mic that hears no speech within this window closes quietly onto
+// the tap-to-answer state instead of recording silence to the
+// ceiling; browser recognition gets the same bounds as Talk's.
+const AUTO_NO_SPEECH_MS = 9000;
+const SR_AUTO_TIMEOUT_MS = 12000;
+const SR_MANUAL_TIMEOUT_MS = 20000;
 
 interface Turn {
   role: "brain" | "user";
@@ -55,20 +63,6 @@ interface IntakeResponse {
 
 type Phase = "ready" | "busy" | "listening" | "unavailable" | "done";
 
-function chunkForSpeak(text: string): string[] {
-  const chunks: string[] = [];
-  let rest = text.trim();
-  while (rest.length > 240) {
-    const slice = rest.slice(0, 240);
-    const idx = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("? "), slice.lastIndexOf("! "));
-    if (idx < 60) break;
-    chunks.push(rest.slice(0, idx + 1).trim());
-    rest = rest.slice(idx + 1).trim();
-  }
-  if (rest) chunks.push(rest);
-  return chunks;
-}
-
 function phoneSpeak(text: string): Promise<void> {
   return new Promise((resolve) => {
     try {
@@ -91,6 +85,10 @@ export default function InterviewClient() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [voice, setVoice] = useState<ProfileVoice>("female");
   const [captured, setCaptured] = useState<Captured | null>(null);
+  // Set when a listen ended with nothing heard (silence on an
+  // auto-open, or a miss): the Answer button is the way back in —
+  // a deliberate tap, never an automatic retry loop.
+  const [awaitingAnswer, setAwaitingAnswer] = useState(false);
   // The Friendly Brain mascot (2026-10-31): thinking while a
   // question (or a transcription) is in flight, a ready spark-flash
   // when the brain's next line lands, listening while they answer.
@@ -129,6 +127,13 @@ export default function InterviewClient() {
   const aliveRef = useRef(true);
   const stopRef = useRef<(() => void) | null>(null);
   const busyRef = useRef(false);
+  // Latency build (2026-10-31): the pipelined sentence-by-sentence
+  // speaker for the brain's questions, whether browser recognition
+  // has failed this session (answers then go straight to the
+  // recorder path), and the in-flight recognition's abort (■ Done).
+  const pipelineRef = useRef<SpeechPipeline | null>(null);
+  const srBrokenRef = useRef(false);
+  const srAbortRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -138,20 +143,29 @@ export default function InterviewClient() {
         window.clearTimeout(brainReadyTimerRef.current);
         brainReadyTimerRef.current = null;
       }
+      pipelineRef.current?.cancel();
+      srAbortRef.current?.();
       stopRef.current?.();
     };
   }, []);
 
+  // The brain's questions speak through the pipeline: sentence by
+  // sentence, first audio as soon as it lands — Fish first per
+  // chunk, the phone voice only for a chunk Fish failed, in the
+  // voice picked so far (it can change mid-interview; the pipeline
+  // takes the current pick on every line).
   async function speak(text: string): Promise<void> {
-    for (const chunk of chunkForSpeak(text)) {
-      if (!aliveRef.current) return;
-      if (!(await speakLineChecked(chunk, voiceRef.current))) {
-        await phoneSpeak(chunk);
-      }
+    if (!pipelineRef.current) {
+      pipelineRef.current = createSpeechPipeline({
+        fallback: (chunk) => phoneSpeak(chunk),
+      });
     }
+    await pipelineRef.current.speak(text, voiceRef.current);
   }
 
-  function recordAnswerAudio(): Promise<Blob | null> {
+  function recordAnswerAudio(
+    noSpeechMs?: number,
+  ): Promise<{ blob: Blob | null; noSpeech: boolean }> {
     return new Promise((resolve) => {
       (async () => {
         try {
@@ -162,6 +176,8 @@ export default function InterviewClient() {
             if (e.data.size > 0) chunks.push(e.data);
           };
           let settled = false;
+          let noSpeech = false;
+          let heardSpeech = false;
           let meterTimer: number | null = null;
           let audioCtx: AudioContext | null = null;
           const finish = () => {
@@ -171,9 +187,12 @@ export default function InterviewClient() {
             if (meterTimer !== null) window.clearInterval(meterTimer);
             if (audioCtx) audioCtx.close().catch(() => {});
             stream.getTracks().forEach((t) => t.stop());
-            resolve(
-              chunks.length ? new Blob(chunks, { type: recorder.mimeType || "audio/webm" }) : null,
-            );
+            resolve({
+              blob: chunks.length
+                ? new Blob(chunks, { type: recorder.mimeType || "audio/webm" })
+                : null,
+              noSpeech,
+            });
           };
           recorder.onstop = finish;
           stopRef.current = () => {
@@ -192,8 +211,8 @@ export default function InterviewClient() {
               analyser.fftSize = 512;
               source.connect(analyser);
               const samples = new Float32Array(analyser.fftSize);
-              let heardSpeech = false;
               let lastSpeechAt = performance.now();
+              const startedAt = performance.now();
               meterTimer = window.setInterval(() => {
                 if (recorder.state === "inactive") return;
                 analyser.getFloatTimeDomainData(samples);
@@ -206,6 +225,15 @@ export default function InterviewClient() {
                   lastSpeechAt = now;
                 } else if (heardSpeech && now - lastSpeechAt >= ANSWER_SILENCE_MS) {
                   stopRef.current?.();
+                } else if (
+                  noSpeechMs !== undefined &&
+                  !heardSpeech &&
+                  now - startedAt >= noSpeechMs
+                ) {
+                  // Auto-listen watchdog, mirroring TalkClient: an
+                  // auto-opened mic hearing nobody closes quietly.
+                  noSpeech = true;
+                  stopRef.current?.();
                 }
               }, 100);
             }
@@ -215,8 +243,18 @@ export default function InterviewClient() {
           }
           recorder.start();
           setTimeout(() => stopRef.current?.(), ANSWER_MAX_MS);
+          if (noSpeechMs !== undefined) {
+            // Plain-timer twin of the watchdog, for devices where
+            // the level meter can't run.
+            setTimeout(() => {
+              if (!settled && !heardSpeech) {
+                noSpeech = true;
+                stopRef.current?.();
+              }
+            }, noSpeechMs);
+          }
         } catch {
-          resolve(null);
+          resolve({ blob: null, noSpeech: false });
         }
       })();
     });
@@ -253,18 +291,73 @@ export default function InterviewClient() {
     setStatus("");
   }
 
-  async function listen(): Promise<void> {
+  // A listen that ended with nothing heard. Two flavors, one
+  // state: a miss (they spoke; it couldn't be used) keeps the
+  // familiar didn't-catch words, while silence on an auto-open is
+  // not a miss — it closes quietly with a plain whenever-you're-
+  // ready. Either way the way back in is the Answer button: a
+  // deliberate tap, never an automatic retry.
+  function parkOrMiss(missed: boolean): void {
+    setPhase("busy");
+    brainIdle();
+    setAwaitingAnswer(true);
+    setStatus(
+      missed
+        ? "I didn't catch that. Tap Answer and say it again."
+        : "I'm here when you're ready — tap Answer to talk.",
+    );
+    busyRef.current = false;
+  }
+
+  // Hear one answer. The interview is already an auto-listen loop —
+  // askBrain calls this the moment a question finishes speaking —
+  // and auto = true marks that auto-open: silence then closes
+  // quietly onto the Answer button. A deliberate Answer tap calls
+  // with auto = false and gets the manual behavior (no watchdog).
+  //
+  // Where the platform offers browser recognition it hears the
+  // answer (finals only, straight from the platform's endpointing);
+  // a recognition error marks it broken for the session and this
+  // same answer falls through to the recorder + /api/transcribe
+  // path, which stays as the fallback.
+  async function listen(auto: boolean): Promise<void> {
     if (!aliveRef.current) return;
+    setAwaitingAnswer(false);
     setPhase("listening");
     setBrainState("listening");
+    if (!srBrokenRef.current && speechRecognitionAvailable()) {
+      setStatus("Listening — just talk.");
+      const heard = await recognizeOnce({
+        timeoutMs: auto ? SR_AUTO_TIMEOUT_MS : SR_MANUAL_TIMEOUT_MS,
+        registerAbort: (fn) => {
+          srAbortRef.current = fn;
+        },
+      });
+      srAbortRef.current = null;
+      if (!aliveRef.current) return;
+      if (heard.status === "heard") {
+        historyRef.current = [...historyRef.current, { role: "user", text: heard.text }];
+        setTurns(historyRef.current);
+        await askBrain();
+        return;
+      }
+      if (heard.status === "error") {
+        srBrokenRef.current = true;
+        // Fall through — the recorder hears this answer.
+      } else {
+        parkOrMiss(false);
+        return;
+      }
+    }
     setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
-    const blob = await recordAnswerAudio();
+    const { blob, noSpeech } = await recordAnswerAudio(auto ? AUTO_NO_SPEECH_MS : undefined);
     if (!aliveRef.current) return;
+    if (noSpeech) {
+      parkOrMiss(false);
+      return;
+    }
     if (!blob) {
-      setPhase("busy");
-      brainIdle();
-      setStatus("I didn't catch that. Tap Answer and say it again.");
-      busyRef.current = false;
+      parkOrMiss(true);
       return;
     }
     setPhase("busy");
@@ -273,9 +366,7 @@ export default function InterviewClient() {
     const text = await transcribeBlob(blob);
     if (!aliveRef.current) return;
     if (!text) {
-      brainIdle();
-      setStatus("I didn't catch that. Tap Answer and say it again.");
-      busyRef.current = false;
+      parkOrMiss(true);
       return;
     }
     historyRef.current = [...historyRef.current, { role: "user", text }];
@@ -326,7 +417,7 @@ export default function InterviewClient() {
       return;
     }
     busyRef.current = false;
-    await listen();
+    await listen(true);
   }
 
   function begin(): void {
@@ -334,13 +425,14 @@ export default function InterviewClient() {
     historyRef.current = [];
     setTurns([]);
     setCaptured(null);
+    setAwaitingAnswer(false);
     void askBrain();
   }
 
   function answerAgain(): void {
     if (busyRef.current) return;
     busyRef.current = true;
-    void listen().finally(() => {
+    void listen(false).finally(() => {
       busyRef.current = false;
     });
   }
@@ -394,7 +486,10 @@ export default function InterviewClient() {
         <div className="mt-6 text-center">
           <button
             type="button"
-            onClick={() => stopRef.current?.()}
+            onClick={() => {
+              srAbortRef.current?.();
+              stopRef.current?.();
+            }}
             className="rounded-full bg-stone-800 px-8 py-4 text-lg font-semibold text-white"
           >
             ■ Done
@@ -402,7 +497,7 @@ export default function InterviewClient() {
         </div>
       )}
 
-      {phase === "busy" && status.includes("didn't catch") && (
+      {phase === "busy" && awaitingAnswer && (
         <div className="mt-6 text-center">
           <button
             type="button"

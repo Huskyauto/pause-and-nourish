@@ -37,6 +37,166 @@ export async function speakLine(text: string, voice?: ProfileVoice): Promise<voi
   }
 }
 
+// ---------- pipelined speech (latency build, 2026-10-31) ----------
+//
+// A brain line used to be spoken as ONE /api/speak call: Fish
+// generated the whole line, the client downloaded the whole MP3,
+// and only then did the first sound play — the full generation time
+// of every sentence sat in front of the first word. The pipeline
+// below splits a line into sentences, requests the first sentence
+// immediately, starts playback the moment ITS audio lands, and
+// fetches the next sentence while the current one plays (fetch-
+// ahead of one, so a cancelled line wastes at most one extra
+// sentence of Fish credit). A new line — or cancel() — supersedes
+// the queue cleanly: in-flight fetches are discarded, the playing
+// audio stops, and no fallback fires for a cancelled chunk.
+//
+// The standing rules are unchanged: Fish first for every chunk,
+// the phone's voice (the caller's fallback) only for a chunk Fish
+// itself failed to speak, and the user's voice selection (founder
+// clone / chosen neutral stock voice) passed through on every call.
+// Guided-action steps do NOT use this — they pace by design through
+// speakLineChecked/speakAloud exactly as before.
+
+// Split a line into sentences (terminators kept), then cap each
+// piece at the same ~280 chars the app's other chunking uses, so a
+// very long sentence still fits Fish's per-call limit.
+export function splitSentences(text: string): string[] {
+  const line = text.trim();
+  if (!line) return [];
+  const sentences: string[] = [];
+  const re = /[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    const s = m[0].trim();
+    if (s) sentences.push(s);
+  }
+  if (!sentences.length) sentences.push(line);
+  const chunks: string[] = [];
+  for (const sentence of sentences) {
+    let rest = sentence;
+    while (rest.length > 280) {
+      const cut = rest.lastIndexOf(". ", 280);
+      const idx = cut > 60 ? cut + 1 : 280;
+      chunks.push(rest.slice(0, idx).trim());
+      rest = rest.slice(idx).trim();
+    }
+    if (rest) chunks.push(rest);
+  }
+  return chunks;
+}
+
+async function fetchChunkAudio(text: string, voice?: ProfileVoice): Promise<string | null> {
+  try {
+    const res = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(voice ? { text, voice } : { text }),
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
+}
+
+export interface SpeechPipeline {
+  // Speak one line, pipelined sentence by sentence. Resolves when
+  // the line has finished (or was superseded/cancelled).
+  speak: (text: string, voice?: ProfileVoice) => Promise<void>;
+  // Stop the current line and drop its queue. Never triggers the
+  // phone-voice fallback.
+  cancel: () => void;
+}
+
+export function createSpeechPipeline(opts: {
+  fallback: (chunk: string) => Promise<void>;
+}): SpeechPipeline {
+  let generation = 0;
+  let currentAudio: HTMLAudioElement | null = null;
+  let interruptPlay: (() => void) | null = null;
+
+  function stopCurrent() {
+    if (interruptPlay) {
+      const f = interruptPlay;
+      interruptPlay = null;
+      f();
+    }
+    if (currentAudio) {
+      try {
+        currentAudio.pause();
+      } catch {
+        // Already stopped.
+      }
+      currentAudio = null;
+    }
+  }
+
+  function playUrl(url: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const audio = new Audio(url);
+      currentAudio = audio;
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        interruptPlay = null;
+        if (currentAudio === audio) currentAudio = null;
+        URL.revokeObjectURL(url);
+        resolve(ok);
+      };
+      interruptPlay = () => finish(false);
+      audio.addEventListener("ended", () => finish(true), { once: true });
+      audio.addEventListener("error", () => finish(false), { once: true });
+      audio.play().catch(() => finish(false));
+      // A generated sentence is seconds long; never hang a caller.
+      setTimeout(() => finish(true), 60000);
+    });
+  }
+
+  async function speak(text: string, voice?: ProfileVoice): Promise<void> {
+    const gen = ++generation;
+    stopCurrent();
+    const chunks = splitSentences(text);
+    let pending: Promise<string | null> | null = null;
+    for (let i = 0; i < chunks.length; i++) {
+      if (gen !== generation) return;
+      const thisFetch = pending ?? fetchChunkAudio(chunks[i], voice);
+      pending = i + 1 < chunks.length ? fetchChunkAudio(chunks[i + 1], voice) : null;
+      if (pending) {
+        // If this line is superseded before the ahead-fetch is
+        // consumed, don't leak its blob URL.
+        const ahead = pending;
+        void ahead.then((u) => {
+          if (gen !== generation && u) URL.revokeObjectURL(u);
+        });
+      }
+      const url = await thisFetch;
+      if (gen !== generation) {
+        if (url) URL.revokeObjectURL(url);
+        return;
+      }
+      if (!url) {
+        // Fish failed this chunk — the phone voice speaks it, the
+        // same per-chunk fallback rule as speakAloud.
+        await opts.fallback(chunks[i]);
+        continue;
+      }
+      const ok = await playUrl(url);
+      if (gen !== generation) return;
+      if (!ok) await opts.fallback(chunks[i]);
+    }
+  }
+
+  function cancel() {
+    generation++;
+    stopCurrent();
+  }
+
+  return { speak, cancel };
+}
+
 // The same Fish call as speakLine, but it waits until the line has
 // actually finished playing and reports whether Fish spoke it. Talk
 // It Through uses this for every dynamic line: it needs to know the

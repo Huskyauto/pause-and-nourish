@@ -32,7 +32,8 @@ import {
   type PlanElement,
   type TalkAnswers,
 } from "@/lib/spine";
-import { speakLineChecked } from "@/lib/speak";
+import { createSpeechPipeline, speakLineChecked, type SpeechPipeline } from "@/lib/speak";
+import { recognizeOnce, speechRecognitionAvailable } from "@/lib/recognize";
 import { computeRiskWindowState } from "@/lib/riskWindows";
 import { getPlaceLabel } from "@/lib/places";
 import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
@@ -53,8 +54,12 @@ import { applyDueDirectness } from "../shield/ShieldDay4";
 // Talk It Through (Day 5; free-form revision, 2026-10-30): the
 // conversation SOS. There is no script anymore: Muse Spark (via
 // /api/converse) holds a real back-and-forth — it asks its own
-// questions on the cuff, the user answers out loud, Muse Voice
-// Transcribe (via /api/transcribe) turns each answer into words, and
+// questions on the cuff, the user answers out loud, the browser's
+// own recognition turns each answer into words where the platform
+// offers it (Muse Voice Transcribe via /api/transcribe is the
+// fallback), brain lines are spoken sentence-by-sentence as their
+// audio lands, the mic re-opens on its own after each question,
+// and
 // the brain offers its thoughts on what to do next drawn only from
 // the user's own saved playbook and declared journal patterns. The
 // deterministic spine parsers now run in the BACKGROUND over each
@@ -166,32 +171,23 @@ const UNAVAILABLE_LINE = "I can't reach the brain right now.";
 // ■ Done button stays as his manual override at all times.
 const ANSWER_SILENCE_MS = 1800;
 const ANSWER_MAX_MS = 120000;
+// Auto-listen (latency build, 2026-10-31): when the mic opens on
+// its own after a brain line, a user who says nothing must not hang
+// the conversation — if no speech has been heard within this window
+// the capture closes quietly and the turn waits for a tap instead.
+// Deliberate answers (a tap, a retry) are never cut by it.
+const AUTO_NO_SPEECH_MS = 9000;
+// Browser-recognition listen bounds: the recognizer endpoints on
+// its own, these only bound a recognizer that never does. The
+// auto-open gets the shorter bound — it is the one that must close
+// quietly when nobody answers.
+const SR_AUTO_TIMEOUT_MS = 12000;
+const SR_MANUAL_TIMEOUT_MS = 20000;
 // Mic level (RMS over the analyser's float time-domain samples) that
 // counts as speech. Kept low on purpose: missing quiet speech would
 // end turns early — the exact failure this fix removes — while
 // ordinary room noise sits below it.
 const SPEECH_RMS_THRESHOLD = 0.02;
-
-// Minimal typing for the browser's speech recognition fallback (used
-// only when the Meta key isn't in yet — never the primary path).
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((e: { results?: { [i: number]: { [j: number]: { transcript?: string } } } }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-function speechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
-  const w = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 // Meta's batch ASR endpoint only accepts mono 16-bit PCM WAV, so the
 // recorded answer (webm/opus) is decoded, downmixed, resampled to
@@ -252,6 +248,11 @@ export default function TalkClient() {
   const [status, setStatus] = useState("");
   const [heard, setHeard] = useState("");
   const [captureMode, setCaptureMode] = useState<CaptureMode>("idle");
+  // Auto-listen state: an auto-opened capture is in flight (the
+  // type-instead escape shows), or the auto-open heard nothing and
+  // the turn is parked on tap-to-answer.
+  const [autoListen, setAutoListen] = useState(false);
+  const [awaitingTap, setAwaitingTap] = useState(false);
   const [textDraft, setTextDraft] = useState("");
   const [planElements, setPlanElements] = useState<PlanElement[]>([]);
   const [finishKind, setFinishKind] = useState<FinishKind>(null);
@@ -316,10 +317,24 @@ export default function TalkClient() {
   const todayRef = useRef<TodayJournalItem[]>([]);
   const bitsRef = useRef("");
   const backgroundChoiceRef = useRef<FinalChoice | null>(null);
-  // Answer capture path: "api" (record + /api/transcribe) until the
-  // route reports the key is missing; then "sr" (browser recognition)
-  // or "text" (one-answer type-in) for the rest of the conversation.
-  const capturePathRef = useRef<"api" | "sr" | "text">("api");
+  // Answer capture path: "api" (spoken answers — browser
+  // recognition first where the platform offers it, the recorder +
+  // /api/transcribe behind it) until the transcribe route reports
+  // the key is missing with no recognition to lean on; then "text"
+  // (one-answer type-in) for the rest of the conversation.
+  const capturePathRef = useRef<"api" | "text">("api");
+  // Latency build (2026-10-31): the pipelined sentence-by-sentence
+  // speaker for conversational brain lines (guided-action steps
+  // keep speakAloud — their pacing is by design); whether browser
+  // recognition has failed this session (then answers go straight
+  // to the recorder path); the in-flight recognition's abort (the
+  // type-instead escape); whether the current capture was aborted
+  // on purpose; and the parked tap-to-answer waiter.
+  const pipelineRef = useRef<SpeechPipeline | null>(null);
+  const srBrokenRef = useRef(false);
+  const captureAbortRef = useRef<(() => void) | null>(null);
+  const captureAbortedRef = useRef(false);
+  const tapWaiterRef = useRef<((action: "answer" | "type" | "end") => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stopRecordingRef = useRef<(() => void) | null>(null);
@@ -354,6 +369,7 @@ export default function TalkClient() {
       } catch {
         // Nothing to cancel.
       }
+      pipelineRef.current?.cancel();
       audioRef.current?.pause();
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
@@ -449,6 +465,23 @@ export default function TalkClient() {
         await phoneSpeak(chunk);
       }
     }
+  }
+
+  // Conversational brain lines go through the pipelined speaker
+  // (latency build, 2026-10-31): sentence by sentence, the first
+  // sentence's audio plays as soon as it lands instead of after the
+  // whole line has been generated. Fish-first per chunk and the
+  // phone voice only for a chunk Fish failed — the same rules as
+  // speakAloud, which still serves guided-action steps, the outcome
+  // question, and the fixed capture prompts (their pacing/wording
+  // is by design and is not pipelined).
+  function speakBrainLine(text: string): Promise<void> {
+    if (!pipelineRef.current) {
+      pipelineRef.current = createSpeechPipeline({
+        fallback: (chunk) => phoneSpeak(chunk),
+      });
+    }
+    return pipelineRef.current.speak(text, speechVoice());
   }
 
   // ---------- the free-form brain ----------
@@ -672,7 +705,7 @@ export default function TalkClient() {
       setCurrentLine(res.say);
       historyRef.current.push({ role: "brain", text: res.say });
       persistTranscriptNote();
-      await speakAloud(res.say);
+      await speakBrainLine(res.say);
     }
     if (!aliveRef.current) return;
     setFinishKind("deferred");
@@ -730,7 +763,9 @@ export default function TalkClient() {
   //   3. the ANSWER_MAX_MS ceiling, for a turn that never goes quiet.
   // The level watch is best-effort: if an AudioContext can't run,
   // ways 2 and 3 still bound the turn exactly as before.
-  function recordAnswerAudio(): Promise<Blob | null> {
+  function recordAnswerAudio(
+    noSpeechMs?: number,
+  ): Promise<{ blob: Blob | null; noSpeech: boolean }> {
     return new Promise((resolve) => {
       (async () => {
         try {
@@ -743,6 +778,8 @@ export default function TalkClient() {
             if (e.data.size > 0) chunks.push(e.data);
           };
           let settled = false;
+          let noSpeech = false;
+          let heardSpeech = false;
           let meterTimer: number | null = null;
           let audioCtx: AudioContext | null = null;
           const finish = () => {
@@ -755,7 +792,7 @@ export default function TalkClient() {
             const blob = chunks.length
               ? new Blob(chunks, { type: recorder.mimeType || "audio/webm" })
               : null;
-            resolve(blob);
+            resolve({ blob, noSpeech });
           };
           recorder.onstop = finish;
           stopRecordingRef.current = () => {
@@ -777,8 +814,8 @@ export default function TalkClient() {
               analyser.fftSize = 512;
               source.connect(analyser);
               const samples = new Float32Array(analyser.fftSize);
-              let heardSpeech = false;
               let lastSpeechAt = performance.now();
+              const startedAt = performance.now();
               meterTimer = window.setInterval(() => {
                 if (recorder.state === "inactive") return;
                 analyser.getFloatTimeDomainData(samples);
@@ -791,6 +828,17 @@ export default function TalkClient() {
                   lastSpeechAt = now;
                 } else if (heardSpeech && now - lastSpeechAt >= ANSWER_SILENCE_MS) {
                   stopRecordingRef.current?.();
+                } else if (
+                  noSpeechMs !== undefined &&
+                  !heardSpeech &&
+                  now - startedAt >= noSpeechMs
+                ) {
+                  // Auto-listen watchdog: the mic opened on its own
+                  // and nobody is answering — close quietly (the
+                  // caller parks the turn on tap-to-answer) instead
+                  // of recording silence to the ceiling.
+                  noSpeech = true;
+                  stopRecordingRef.current?.();
                 }
               }, 100);
             }
@@ -800,41 +848,21 @@ export default function TalkClient() {
           }
           recorder.start();
           setTimeout(() => stopRecordingRef.current?.(), ANSWER_MAX_MS);
+          if (noSpeechMs !== undefined) {
+            // The same watchdog on a plain timer, for devices where
+            // the level meter can't run: no speech heard at all by
+            // the deadline still closes the auto-open quietly.
+            setTimeout(() => {
+              if (!settled && !heardSpeech) {
+                noSpeech = true;
+                stopRecordingRef.current?.();
+              }
+            }, noSpeechMs);
+          }
         } catch {
-          resolve(null);
+          resolve({ blob: null, noSpeech: false });
         }
       })();
-    });
-  }
-
-  function speechRecognizeOnce(): Promise<string | null> {
-    return new Promise((resolve) => {
-      const Ctor = speechRecognitionCtor();
-      if (!Ctor) return resolve(null);
-      try {
-        const rec = new Ctor();
-        rec.lang = "en-US";
-        rec.interimResults = false;
-        rec.maxAlternatives = 1;
-        let settled = false;
-        const done = (value: string | null) => {
-          if (settled) return;
-          settled = true;
-          try {
-            rec.stop();
-          } catch {
-            // Already stopped.
-          }
-          resolve(value);
-        };
-        rec.onresult = (e) => done(e.results?.[0]?.[0]?.transcript ?? null);
-        rec.onerror = () => done(null);
-        rec.onend = () => done(null);
-        rec.start();
-        setTimeout(() => done(null), 15000);
-      } catch {
-        resolve(null);
-      }
     });
   }
 
@@ -850,39 +878,83 @@ export default function TalkClient() {
     });
   }
 
-  // One spoken answer, end to end. Returns the transcript (or null when
-  // nothing usable was heard — the caller re-asks once, then moves on).
-  async function captureAnswerText(): Promise<string | null> {
-    brainListen();
-    if (capturePathRef.current === "sr") {
-      setCaptureMode("sr");
-      setStatus("Listening — just talk.");
-      const text = await speechRecognizeOnce();
-      setCaptureMode("idle");
-      return text;
-    }
+  // The type-instead escape, live during any auto-opened capture:
+  // stop whatever is hearing (recognizer or recorder) and mark the
+  // stop as deliberate, so the capture routes this answer to the
+  // type-in instead of treating it as a miss.
+  function requestTypeInstead() {
+    captureAbortedRef.current = true;
+    captureAbortRef.current?.();
+    stopRecordingRef.current?.();
+  }
+
+  type CaptureOutcome =
+    | { kind: "heard"; text: string }
+    | { kind: "none" }
+    | { kind: "no-speech" }
+    | { kind: "to-text" };
+
+  // One capture attempt. Order (latency build, 2026-10-31): where
+  // the platform offers browser recognition it hears the answer —
+  // its transcript lands with the platform's own endpointing, no
+  // upload, no batch ASR wait. A recognition ERROR (refused,
+  // unsupported, service failure) marks recognition broken for the
+  // session and this same answer falls through to the recorder +
+  // Muse Voice Transcribe path, which remains the fallback
+  // wherever recognition is unavailable. "no-speech" is only
+  // produced on an auto-open (auto = true): silence there closes
+  // quietly rather than hanging.
+  async function captureOnce(auto: boolean): Promise<CaptureOutcome> {
     if (capturePathRef.current === "text") {
       setStatus("Type this one answer.");
-      return captureViaText();
+      const text = await captureViaText();
+      return text ? { kind: "heard", text } : { kind: "none" };
     }
-    // Primary path: record, then Muse Voice Transcribe via the server.
+    if (!srBrokenRef.current && speechRecognitionAvailable()) {
+      setCaptureMode("sr");
+      setStatus("Listening — just talk.");
+      captureAbortedRef.current = false;
+      const heard = await recognizeOnce({
+        timeoutMs: auto ? SR_AUTO_TIMEOUT_MS : SR_MANUAL_TIMEOUT_MS,
+        registerAbort: (fn) => {
+          captureAbortRef.current = fn;
+        },
+      });
+      captureAbortRef.current = null;
+      setCaptureMode("idle");
+      if (captureAbortedRef.current) return { kind: "to-text" };
+      if (heard.status === "heard") return { kind: "heard", text: heard.text };
+      if (heard.status === "error") {
+        srBrokenRef.current = true;
+        // Fall through — the recorder path hears this answer.
+      } else {
+        return auto ? { kind: "no-speech" } : { kind: "none" };
+      }
+    }
+    // Recorder path: record, then Muse Voice Transcribe via the
+    // server.
     setCaptureMode("recording");
     setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
-    const blob = await recordAnswerAudio();
+    captureAbortedRef.current = false;
+    const { blob, noSpeech } = await recordAnswerAudio(auto ? AUTO_NO_SPEECH_MS : undefined);
     setCaptureMode("idle");
-    if (!blob) return null;
+    if (captureAbortedRef.current) return { kind: "to-text" };
+    if (noSpeech) return { kind: "no-speech" };
+    if (!blob) return { kind: "none" };
     setStatus("One moment…");
     brainThink();
     // Meta's ASR endpoint takes mono PCM WAV only — convert first.
     const wav = await blobToWav(blob);
-    if (!wav) return null;
+    if (!wav) return { kind: "none" };
     try {
       const form = new FormData();
       form.append("audio", wav, "answer.wav");
       const res = await fetch("/api/transcribe", { method: "POST", body: form });
       if (res.ok) {
         const data = (await res.json()) as { text?: unknown };
-        return typeof data.text === "string" && data.text.trim() ? data.text : null;
+        return typeof data.text === "string" && data.text.trim()
+          ? { kind: "heard", text: data.text }
+          : { kind: "none" };
       }
       let code = "";
       try {
@@ -891,14 +963,59 @@ export default function TalkClient() {
         // Non-JSON body — treated as a plain failure below.
       }
       if (code === "meta_not_configured") {
-        // The key isn't in yet: switch this conversation to the
-        // browser's own recognition, or a one-answer type-in.
-        capturePathRef.current = speechRecognitionCtor() ? "sr" : "text";
-        return captureAnswerText();
+        // The key isn't in yet and recognition already had its
+        // chance above: this conversation types its answers.
+        capturePathRef.current = "text";
+        return captureOnce(auto);
       }
-      return null;
+      return { kind: "none" };
     } catch {
-      return null;
+      return { kind: "none" };
+    }
+  }
+
+  // One spoken answer, end to end. Returns the transcript (or null when
+  // nothing usable was heard — the caller re-asks once, then moves on).
+  //
+  // Auto-listen (the conversation loop passes autoListen): the mic
+  // opens on its own the moment the brain's line ends — no tap —
+  // exactly once per brain turn. If nobody answers, the capture
+  // closes quietly and the turn PARKS on tap-to-answer (a "Tap to
+  // answer" button and a type-instead escape, both on screen)
+  // instead of re-asking or looping. Deliberate captures — the
+  // outcome question, the one-word capture, a tap after a park —
+  // run without the flag and behave exactly as they always have.
+  async function captureAnswerText(opts?: {
+    autoListen?: boolean;
+  }): Promise<string | null> {
+    brainListen();
+    const auto = opts?.autoListen === true;
+    if (auto) setAutoListen(true);
+    try {
+      let outcome = await captureOnce(auto);
+      if (outcome.kind === "to-text") return await captureViaText();
+      if (outcome.kind === "heard") return outcome.text;
+      if (outcome.kind === "none") return null;
+      // no-speech on an auto-open: park the turn — unless the
+      // session is already closing (End conversation aborts a
+      // capture the same way, and its no-speech must not park).
+      if (sessionOverRef.current) return null;
+      brainIdle();
+      setStatus("I'm here when you're ready — tap to answer, or type it instead.");
+      setAwaitingTap(true);
+      const action = await new Promise<"answer" | "type" | "end">((resolve) => {
+        tapWaiterRef.current = resolve;
+      });
+      tapWaiterRef.current = null;
+      setAwaitingTap(false);
+      if (!aliveRef.current || action === "end") return null;
+      if (action === "type") return await captureViaText();
+      brainListen();
+      outcome = await captureOnce(false);
+      if (outcome.kind === "to-text") return await captureViaText();
+      return outcome.kind === "heard" ? outcome.text : null;
+    } finally {
+      if (auto) setAutoListen(false);
     }
   }
 
@@ -1109,19 +1226,21 @@ export default function TalkClient() {
       setStatus("");
       historyRef.current.push({ role: "brain", text: res.say });
       persistTranscriptNote();
-      await speakAloud(res.say);
+      await speakBrainLine(res.say);
       if (!aliveRef.current) return;
       if (res.done) {
         await closeSession(res.choice, res.say);
         return;
       }
-      let raw = await captureAnswerText();
-      if (!aliveRef.current) return;
+      // Auto-listen: the brain just asked out loud, so the mic
+      // opens on its own for the answer — one auto-open per turn.
+      let raw = await captureAnswerText({ autoListen: true });
+      if (!aliveRef.current || sessionOverRef.current) return;
       if (!raw) {
         await speakAloud("I didn't catch that.");
         if (!aliveRef.current) return;
-        raw = await captureAnswerText();
-        if (!aliveRef.current) return;
+        raw = await captureAnswerText({ autoListen: true });
+        if (!aliveRef.current || sessionOverRef.current) return;
       }
       if (!raw) {
         // The user has gone quiet — close gracefully with the plan.
@@ -1222,7 +1341,10 @@ export default function TalkClient() {
   async function endConversation(): Promise<void> {
     actionAbortRef.current = true;
     stopRecordingRef.current?.();
+    captureAbortRef.current?.();
+    tapWaiterRef.current?.("end");
     textResolverRef.current?.("");
+    pipelineRef.current?.cancel();
     persistTranscriptNote();
     try {
       window.speechSynthesis?.cancel();
@@ -1419,6 +1541,33 @@ export default function TalkClient() {
         )}
         {captureMode === "sr" && (
           <p className="mt-6 text-lg font-medium text-stone-700">🎙 Listening…</p>
+        )}
+        {autoListen && (captureMode === "recording" || captureMode === "sr") && (
+          <button
+            type="button"
+            onClick={requestTypeInstead}
+            className="mt-3 text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
+          >
+            Type instead
+          </button>
+        )}
+        {awaitingTap && (
+          <div className="mt-6 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => tapWaiterRef.current?.("answer")}
+              className="w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+            >
+              Tap to answer
+            </button>
+            <button
+              type="button"
+              onClick={() => tapWaiterRef.current?.("type")}
+              className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
+            >
+              Type it instead
+            </button>
+          </div>
         )}
         {captureMode === "text" && (
           <div className="mt-6 flex gap-2">
