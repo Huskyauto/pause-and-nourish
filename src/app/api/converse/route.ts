@@ -31,6 +31,14 @@
 import { metaApiKey, metaChat, MetaApiError } from "@/lib/meta";
 import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
 import { filterGeneratedLine, openerLine, type PartOfDay } from "@/lib/spine";
+import {
+  MODALITY_REPERTOIRE,
+  actionLabel,
+  isGuidedActionKind,
+  type ConverseEvent,
+  type GuidedActionKind,
+  type SessionOutcomeItem,
+} from "@/lib/actions";
 import type { Directness, ShieldPlan } from "@/lib/journal";
 
 export interface ConverseTurn {
@@ -108,7 +116,41 @@ Hard rules:
 
 Endings: when the user has made (or clearly stated) their choice — eat, swap, or delay — return done=true and choice set to it, and make "say" a warm closing line reflecting their choice. If the user clearly wants to stop without choosing, return done=true and choice=null. Otherwise done=false and choice=null. Aim to reach a natural close within about eight exchanges; do not drag the conversation out.
 
-Respond with ONLY a JSON object, no other text: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>}`;
+Respond with ONLY a JSON object, no other text: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>, "action": <{"kind": "<guided-action kind>"}|null>}. Set "action" ONLY when your "say" line is proposing that guided action, exactly as the guided-action section below describes — otherwise null. An action proposal always has done=false and choice=null.`;
+}
+
+// The guided-action block (Day 6 "big push", Bob's directive
+// 2026-10-31): conversation was never meant to be talk-only. Once the
+// brain has learned the shape of the moment — where he is, body
+// hunger or the urge, how strong, what he needs — it may propose ONE
+// concrete action from his repertoire and the app leads it, step by
+// step, in voice. The repertoire is DATA (src/lib/actions.ts): this
+// block is generated from it, and the kind the model returns is
+// validated against the same table, so a new modality becomes
+// offerable by adding a table entry, not by editing this prompt. The
+// model returns the kind only: step text and pacing are built by the
+// app from the repertoire entry and his plan, so nothing the app
+// leads was invented on the spot. A declined action is never
+// re-proposed in the same conversation; a completed one is followed
+// by a plain "how does the urge sit now" — his declared number, the
+// same as the pause flow.
+function guidedActionBlock(hasSwap: boolean): string {
+  const entries = MODALITY_REPERTOIRE.map((m) => {
+    const fits = m.situations.join("; ");
+    const note =
+      m.id === "swap" && !hasSwap
+        ? " — NOT available right now: his plan has no stocked swaps saved, so do not propose it"
+        : "";
+    return `- "${m.id}" (${m.name}): fits ${fits}${note}`;
+  }).join("\n");
+  return `GUIDED ACTIONS — WHEN TALK HAS FOUND THE MOMENT, LEAD ONE:
+
+Once you have learned the shape of this moment — where he is, whether it's body hunger or the urge, how strong it is, what he needs — you may propose ONE guided action and, if he says yes, the app leads it step by step in voice. Choose the one that fits what he told you, this hour, and his record (his session record below shows what he has marked as working and what he hasn't — offer what he marked good first; don't push what he marked as one to work on, in the same form). The proposal line is spoken, one or two short sentences, ending as a genuine question he can say no to: "Why don't we start with five deep breaths?" is the shape. A pass is a complete answer — if he says no or not now, let it go entirely: no persuasion, no second offer of the same action this conversation, and the conversation simply continues. If he asks for an action himself, proposing that one is always right (when it's on the list and fits the hour).
+
+THE REPERTOIRE — the only actions you may propose, by kind:
+${entries}
+
+Rules: propose at most one action per reply, and set "action" to {"kind": "<the kind>"} ONLY in the reply whose "say" line makes that proposal; every other reply has "action": null. A proposal always has done=false and choice=null. Never invent an action that is not on this list, and never describe steps, techniques, or benefits beyond the entry's own words. If the app tells you an action just ran (a completed note below), ask how the urge sits now, plainly — then let his answer steer what happens next, including closing if he's ready.`;
 }
 
 // The personable-companion block (Bob's directive, 2026-10-30): the
@@ -157,8 +199,10 @@ What you offer must FIT the hour and the setting. His playbook is the only mater
 // the final word: if any baseline phrasing could be read as
 // advice-giving, the reflect/recall-only rules win. The baseline
 // text itself is never edited here.
-function fullSystemPrompt(directness: Directness): string {
+function fullSystemPrompt(directness: Directness, hasSwap: boolean): string {
   return `${systemPrompt(directness)}
+
+${guidedActionBlock(hasSwap)}
 
 ${personableBlock()}
 
@@ -168,7 +212,7 @@ SECOND-BRAIN BASELINE — WHO THIS PERSON IS, HIS PATTERNS, HIS VOICE, AND THE M
 
 ${SECOND_BRAIN_BASELINE}
 
-FINAL WORD — THE FENCE GOVERNS THE BASELINE: the hard rules above outrank everything in the baseline. Your material is this person's own playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the baseline could be read as advice-giving, this fence wins and that reading is not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>}.`;
+FINAL WORD — THE FENCE GOVERNS THE BASELINE: the hard rules above outrank everything in the baseline. Your material is this person's own playbook, journal, and words: reflect and recall only — no outside advice, no invented tips, no plans they did not build. Their state is user-declared only; never name, guess, or infer an emotion or mental state. Eating is always legitimate. No therapy, diagnosis, treatment, diet, calorie, or weight language; no shame, no moral language. If any line in the baseline could be read as advice-giving, this fence wins and that reading is not used. Respond with ONLY the JSON object described above: {"say": "<the exact line to speak aloud>", "done": <true|false>, "choice": <"eat"|"swap"|"delay"|null>, "action": <{"kind": "<guided-action kind>"}|null>}, with "action" set only on a proposal line, exactly as the guided-action section describes.`;
 }
 
 function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string {
@@ -214,6 +258,41 @@ function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string 
     lines.push("(Nothing saved yet — no why line, no swaps, no journal. The pause itself is the plan.)");
   }
   return lines.join("\n");
+}
+
+// His session record: recent talk sessions with the action that ran
+// and the outcome HE marked at the close ("good outcome" / "one to
+// work on"). This is the learning loop (Day 6): the brain cites his
+// own record back — "the breathing helped Tuesday, want it again?" —
+// as his record, never as a detected pattern, and steers away from
+// what he marked as not working. Device-built from his journal;
+// every field is his declared data.
+function sessionRecordContext(outcomes: SessionOutcomeItem[]): string {
+  if (!outcomes.length) return "";
+  const lines: string[] = [
+    "HIS SESSION RECORD — his recent talk sessions and the outcomes HE marked at the close of each (his own record, stated as his record — never as something you detected):",
+  ];
+  for (const item of outcomes) {
+    const bits: string[] = [item.date];
+    bits.push(item.action ? `guided action: ${item.action}` : "talk only, no guided action");
+    if (item.choice) bits.push(`chose: ${item.choice}`);
+    if (item.outcome === "good") bits.push("he marked it: a good outcome");
+    if (item.outcome === "work-on") bits.push("he marked it: one to work on (it didn't land for him)");
+    lines.push(`- ${bits.join(", ")}`);
+  }
+  lines.push(
+    "How to use this: when you propose a guided action, one he marked good is a fair first offer, and you may say so in his own terms (\"the breathing was a good one Tuesday\"). One he marked as one to work on, don't push in the same form — a different action, or the same one reshaped by what he tells you now. If he has no mark on an action, it is simply untried, not failed.",
+  );
+  return lines.join("\n");
+}
+
+// Fixed wording for a guided-action lifecycle note, composed here —
+// the client reports only {type, kind}; what the model reads is
+// always one of these two strings.
+function eventText(event: ConverseEvent): string {
+  return event.type === "action-completed"
+    ? `(The app just led the guided action "${actionLabel(event.kind)}" (${event.kind}), step by step, and it finished. In your reply, ask him plainly how the urge sits now compared to before — one short warm line. Do not propose another action in this reply.)`
+    : `(He passed on the guided action "${actionLabel(event.kind)}" (${event.kind}) you proposed. Let it go completely — do not mention it again, do not propose it again this conversation, and do not propose a different action in this reply. Just answer what he actually said and keep the conversation going.)`;
 }
 
 // The per-turn moment context: clock, day type, risk-window state,
@@ -347,6 +426,31 @@ function coerceRiskWindow(raw: unknown): RiskWindowContext | null {
   };
 }
 
+function coerceOutcomes(raw: unknown): SessionOutcomeItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SessionOutcomeItem[] = [];
+  for (const item of raw.slice(0, 5)) {
+    const r = item as Partial<SessionOutcomeItem>;
+    const str = (v: unknown, max: number) =>
+      typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+    out.push({
+      date: str(r?.date, 40) ?? "",
+      action: str(r?.action, 60),
+      outcome: r?.outcome === "good" || r?.outcome === "work-on" ? r.outcome : null,
+      choice: str(r?.choice, 20),
+    });
+  }
+  return out;
+}
+
+function coerceEvent(raw: unknown): ConverseEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const e = raw as { type?: unknown; kind?: unknown };
+  if (e.type !== "action-completed" && e.type !== "action-declined") return null;
+  if (!isGuidedActionKind(e.kind)) return null;
+  return { type: e.type, kind: e.kind };
+}
+
 function coerceToday(raw: unknown): TodayJournalItem[] {
   if (!Array.isArray(raw)) return [];
   const out: TodayJournalItem[] = [];
@@ -377,6 +481,8 @@ export async function POST(request: Request) {
   let dayType: DayType | null = null;
   let riskWindow: RiskWindowContext | null = null;
   let today: TodayJournalItem[] = [];
+  let sessionOutcomes: SessionOutcomeItem[] = [];
+  let event: ConverseEvent | null = null;
   try {
     const body = (await request.json()) as {
       history?: unknown;
@@ -388,6 +494,8 @@ export async function POST(request: Request) {
       dayType?: unknown;
       riskWindow?: unknown;
       todayJournal?: unknown;
+      sessionOutcomes?: unknown;
+      event?: unknown;
     };
     history = coerceHistory(body?.history);
     plan = body?.shieldPlan ?? null;
@@ -400,6 +508,8 @@ export async function POST(request: Request) {
     dayType = coerceDayType(body?.dayType);
     riskWindow = coerceRiskWindow(body?.riskWindow);
     today = coerceToday(body?.todayJournal);
+    sessionOutcomes = coerceOutcomes(body?.sessionOutcomes);
+    event = coerceEvent(body?.event);
   } catch {
     // Malformed body falls through to the guards below.
   }
@@ -414,16 +524,30 @@ export async function POST(request: Request) {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
   }
 
+  // Whether any stocked swap exists decides if the model may offer
+  // the swap action at all (see guidedActionBlock) and whether a
+  // returned swap directive survives validation below.
+  const hasSwap = plan.triggerOptions.some((entry) =>
+    entry.options.some((option) => option.trim().length > 0),
+  );
+
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: fullSystemPrompt(directness) },
+    { role: "system", content: fullSystemPrompt(directness, hasSwap) },
     { role: "user", content: momentContext(localTime, dayType, riskWindow, today) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
+  const record = sessionRecordContext(sessionOutcomes);
+  if (record) {
+    messages.push({ role: "user", content: record });
+  }
   for (const turn of history) {
     messages.push({
       role: turn.role === "brain" ? "assistant" : "user",
       content: turn.text,
     });
+  }
+  if (event) {
+    messages.push({ role: "user", content: eventText(event) });
   }
   if (history.length === 0) {
     messages.push({
@@ -448,6 +572,7 @@ export async function POST(request: Request) {
     let say: string | null = null;
     let done = false;
     let choice: FinalChoice | null = null;
+    let action: { kind: GuidedActionKind } | null = null;
     const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
     const start = jsonText.indexOf("{");
     const end = jsonText.lastIndexOf("}");
@@ -457,12 +582,25 @@ export async function POST(request: Request) {
           say?: unknown;
           done?: unknown;
           choice?: unknown;
+          action?: unknown;
         };
         if (typeof parsed.say === "string" && parsed.say.trim()) {
           say = parsed.say.trim();
           done = parsed.done === true;
           if (parsed.choice === "eat" || parsed.choice === "swap" || parsed.choice === "delay") {
             choice = parsed.choice;
+          }
+          // Guided-action directive: the model may only name a kind
+          // from the repertoire, only on a line that keeps the
+          // conversation open, and a swap only when his plan has one
+          // stocked. Anything else is stripped and the reply stands
+          // as a plain spoken line — the client never acts on an
+          // unvalidated directive.
+          if (!done) {
+            const rawKind = (parsed.action as { kind?: unknown } | null)?.kind;
+            if (isGuidedActionKind(rawKind) && (rawKind !== "swap" || hasSwap)) {
+              action = { kind: rawKind };
+            }
           }
         }
       } catch {
@@ -473,27 +611,30 @@ export async function POST(request: Request) {
       say = generated.trim();
     }
     if (say === null) {
-      return Response.json({ say: fallback, done: false, choice: null, source: "fallback" });
+      return Response.json({ say: fallback, done: false, choice: null, action: null, source: "fallback" });
     }
     // The output filter is the last line of defense: a line it rejects
     // is replaced wholesale, and a replaced line never closes the
-    // conversation on the model's say-so.
+    // conversation on the model's say-so — nor carries its action:
+    // if the proposal text didn't survive, the action doesn't run.
     const filtered = filterGeneratedLine(say, fallback);
     if (filtered === fallback && say !== fallback) {
-      return Response.json({ say: fallback, done: false, choice: null, source: "fallback" });
+      return Response.json({ say: fallback, done: false, choice: null, action: null, source: "fallback" });
     }
-    return Response.json({ say: filtered, done, choice, source: "meta" });
+    return Response.json({ say: filtered, done, choice, action, source: "meta" });
   } catch (err) {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
     }
     // Any other Meta failure: the conversation continues on a
-    // deterministic line rather than breaking mid-moment. The upstream
-    // detail rides along for live diagnosis.
+    // deterministic line rather than breaking mid-moment — and a
+    // fallback never invents an action. The upstream detail rides
+    // along for live diagnosis.
     return Response.json({
       say: fallback,
       done: false,
       choice: null,
+      action: null,
       source: "fallback",
       detail: err instanceof MetaApiError ? err.detail : undefined,
     });

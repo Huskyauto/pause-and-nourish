@@ -22,7 +22,7 @@ function SecondaryLinks() {
         Check in
       </Link>
       <Link href="/talk" className={secondaryLinkClass}>
-        Talk it through
+        Talk with me
       </Link>
       <Link href="/dashboard" className={secondaryLinkClass}>
         Your week
@@ -163,16 +163,17 @@ export default function Home() {
           </section>
 
           <section className="mt-6 rounded-2xl border border-[#2f5d3a]/25 bg-[#f2f6ef] p-6 text-center">
-            <p className="font-semibold text-stone-900">Rather talk it out?</p>
+            <p className="font-semibold text-stone-900">Talk with me</p>
             <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
               Your second brain asks, one question at a time. You answer out loud — it deals
-              your own plan back to you.
+              your own plan back to you, and can lead one of your moves out loud when the
+              moment is ready.
             </p>
             <Link
               href="/talk"
               className="mt-4 inline-block w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#2f5d3a]/40"
             >
-              Talk it through
+              Talk with me
             </Link>
           </section>
 

@@ -105,6 +105,40 @@ export default function DashboardPage() {
     { label: "Choices after pausing", value: entries ? choicesValue : "…" },
   ];
 
+  // Your sessions (Day 6): the talk record, newest first — when it
+  // happened, what kind of session it was (talk only, or talk plus
+  // the guided action that ran), the urge before and after where he
+  // gave both, what he chose, and the outcome HE marked at the close.
+  // His words and numbers only; an unmarked session shows no mark.
+  const sessions = all
+    .filter((e) => e.source === "talk")
+    .slice(0, 8)
+    .map((e) => {
+      const d = new Date(e.createdAt);
+      const when = `${d.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })} · ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+      const type = e.sessionAction
+        ? `Talk + ${e.sessionAction.charAt(0).toLowerCase()}${e.sessionAction.slice(1)}`
+        : "Talk only";
+      const urge =
+        e.urgeIntensity !== null && e.urgeAfter !== null
+          ? `Urge ${e.urgeIntensity} → ${e.urgeAfter}`
+          : e.urgeIntensity !== null
+            ? `Urge ${e.urgeIntensity}/5`
+            : null;
+      return {
+        id: e.id,
+        when,
+        type,
+        urge,
+        choice: e.choice ? (CHOICE_LABELS[e.choice] ?? e.choice) : null,
+        outcome: e.sessionOutcome ?? null,
+      };
+    });
+
   // Need histogram — user-declared needs only, never inferred.
   const needCounts = new Map<Need, number>();
   for (const e of all) {
@@ -262,17 +296,49 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {entries && sessions.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm" aria-label="Your sessions">
+          <h2 className="font-semibold text-stone-900">Your sessions</h2>
+          <ul className="mt-3 flex flex-col gap-4">
+            {sessions.map((s) => (
+              <li key={s.id}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium text-stone-900">{s.when}</span>
+                  {s.outcome === "good" && (
+                    <span className="rounded-full bg-[#e7efe3] px-3 py-1 text-sm font-medium text-[#2f5d3a]">
+                      Good outcome
+                    </span>
+                  )}
+                  {s.outcome === "work-on" && (
+                    <span className="rounded-full bg-[#fdf1ec] px-3 py-1 text-sm font-medium text-[#9a3b26]">
+                      To work on
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-sm text-stone-600">
+                  {[s.type, s.urge, s.choice ? `Chose: ${s.choice}` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-stone-900">Your companion</h2>
         <p className="mt-2 leading-relaxed text-stone-600">
-          Talk It Through is live: your second brain asks the questions out loud, you answer
-          out loud, and it deals your own plan back — in your words, not advice.
+          Talk with me is live: your second brain asks the questions out loud, you answer out
+          loud, and it deals your own plan back — in your words, not advice. When the moment
+          is ready it can lead one of your moves out loud, and at the end it asks how it
+          landed — your mark goes on the record above.
         </p>
         <Link
           href="/talk"
           className="mt-3 inline-block font-medium text-[#2f5d3a] underline underline-offset-4"
         >
-          Talk it through →
+          Talk with me →
         </Link>
       </section>
 

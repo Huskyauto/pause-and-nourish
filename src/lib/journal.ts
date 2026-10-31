@@ -56,6 +56,13 @@ export interface JournalEntry {
   urgeAfter: number | null; // 0–5, captured on the outcome screen (Day 3)
   cueAnswer: "me" | "not-me" | "good" | null; // SOS cue answer tap (Day 3)
   learning: string | null; // Day 4: save-one-learning — a tier-1 user statement, verbatim
+  // Day 6 (guided actions): on talk entries, the guided action that
+  // ran during the session (its plain label, e.g. "Five deep
+  // breaths" — see src/lib/actions.ts) and the outcome the user
+  // marked in his own spoken words at the close. Both optional:
+  // pre-Day-6 entries and talk-only sessions simply lack them.
+  sessionAction?: string | null;
+  sessionOutcome?: "good" | "work-on" | null;
 }
 
 // Day 5: the prompt pack joins the two moment recordings — q1..q5 are
@@ -284,6 +291,8 @@ export async function addEntry(input: Partial<JournalEntry>): Promise<JournalEnt
     urgeAfter: input.urgeAfter ?? null,
     cueAnswer: input.cueAnswer ?? null,
     learning: input.learning ?? null,
+    sessionAction: input.sessionAction ?? null,
+    sessionOutcome: input.sessionOutcome ?? null,
   };
   await withFallback(
     () => idbAddEntry(entry),

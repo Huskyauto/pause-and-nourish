@@ -40,6 +40,17 @@ import {
   type TalkStage,
 } from "@/lib/spine";
 import { speakLineChecked } from "@/lib/speak";
+import {
+  OUTCOME_QUESTION,
+  actionLabel,
+  actionSteps,
+  isGuidedActionKind,
+  parseActionResponse,
+  parseOutcome,
+  type ConverseEvent,
+  type GuidedActionKind,
+  type SessionOutcomeItem,
+} from "@/lib/actions";
 import { applyDueDirectness } from "../shield/ShieldDay4";
 
 // Talk It Through (Day 5; free-form revision, 2026-10-30): the
@@ -76,6 +87,22 @@ import { applyDueDirectness } from "../shield/ShieldDay4";
 // so the brain greets Bob like someone who knows him, checks on
 // today's urges, and can walk the day with him; and the scripted
 // offline flow opens with the same warm greeting (spine openerLine).
+//
+// Talk with me + guided actions (Day 6 "big push", Bob's directive
+// 2026-10-31): the talk entry is "Talk with me" — the second brain —
+// and the conversation is no longer talk-only. When the brain judges
+// the moment is ready, /api/converse returns a guided-action
+// directive (a kind from the modality repertoire in src/lib/actions
+// .ts, validated server-side); its "say" line proposes the action out
+// loud, Bob answers out loud, and on a yes the client LEADS the
+// action step by step — speaking each step Fish-first, then waiting
+// the step's paced seconds — with an "End exercise" escape on screen
+// the whole time. A pass simply continues the conversation. When the
+// session closes, the app asks in plain words how it landed and
+// writes his mark (good outcome / one to work on / unmarked) to the
+// same talk journal entry, alongside which action ran; the last five
+// sessions' actions + marks ride along with every converse call so
+// the brain can cite his own record. SOS is untouched.
 
 type UiPhase = "ready" | "conversing" | "finished";
 type CaptureMode = "idle" | "recording" | "sr" | "text";
@@ -220,6 +247,10 @@ export default function TalkClient() {
   const [finishKind, setFinishKind] = useState<FinishKind>(null);
   const [closingLine, setClosingLine] = useState("");
   const [packIncomplete, setPackIncomplete] = useState(false);
+  // Guided-action run state: while an action is being led, the screen
+  // shows its name and the "End exercise" escape.
+  const [actionRunning, setActionRunning] = useState(false);
+  const [runningActionLabel, setRunningActionLabel] = useState("");
 
   const aliveRef = useRef(true);
   const entryRef = useRef<JournalEntry | null>(null);
@@ -244,6 +275,21 @@ export default function TalkClient() {
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const textResolverRef = useRef<((text: string) => void) | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Guided-action + session-record state (Day 6): whether this
+  // conversation is the free-form one (the scripted fallback never
+  // runs actions and never asks the outcome question), the recent
+  // session outcomes sent with every converse call, the lifecycle
+  // note owed to the brain on the next turn, and the run/close
+  // guards — an action runs at most once per conversation, the
+  // outcome is asked at most once, and the first close caller wins.
+  const freeformRef = useRef(false);
+  const sessionOutcomesRef = useRef<SessionOutcomeItem[]>([]);
+  const pendingEventRef = useRef<ConverseEvent | null>(null);
+  const actionRanRef = useRef(false);
+  const outcomeAskedRef = useRef(false);
+  const actionAbortRef = useRef(false);
+  const closingRef = useRef(false);
+  const sessionOverRef = useRef(false);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -408,6 +454,27 @@ export default function TalkClient() {
       }));
   }
 
+  // His session record: the last few TALK sessions before this one,
+  // newest first — the action that ran (or none) and the outcome he
+  // marked at the close. Sent with every converse call so the brain
+  // can cite his own record when it proposes an action. His declared
+  // data only; an unmarked session is simply unmarked.
+  function buildSessionOutcomes(entries: JournalEntry[], excludeId: string | null): SessionOutcomeItem[] {
+    return entries
+      .filter((e) => e.id !== excludeId && e.source === "talk")
+      .slice(0, 5)
+      .map((e) => ({
+        date: new Date(e.createdAt).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        }),
+        action: e.sessionAction ?? null,
+        outcome: e.sessionOutcome ?? null,
+        choice: e.choice,
+      }));
+  }
+
   // Risk-window state from the plan's declared windows, if it carries
   // any (no setup surface collects them yet — normally none, and the
   // route treats absence as "no window claims"). Windows may wrap
@@ -437,6 +504,10 @@ export default function TalkClient() {
     say: string;
     done: boolean;
     choice: FinalChoice | null;
+    // A guided-action directive, when this reply's line proposes one
+    // (validated against the repertoire server-side; re-checked here
+    // before anything runs).
+    action: GuidedActionKind | null;
   }
 
   // One conversational turn: the whole transcript goes up, the brain's
@@ -465,6 +536,8 @@ export default function TalkClient() {
           dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
           riskWindow: computeRiskWindow(plan, now),
           todayJournal: todayRef.current,
+          sessionOutcomes: sessionOutcomesRef.current,
+          event: pendingEventRef.current,
         }),
       });
       if (!res.ok) {
@@ -476,8 +549,16 @@ export default function TalkClient() {
         }
         return code === "meta_not_configured" ? "not-configured" : null;
       }
-      const data = (await res.json()) as { say?: unknown; done?: unknown; choice?: unknown };
+      const data = (await res.json()) as {
+        say?: unknown;
+        done?: unknown;
+        choice?: unknown;
+        action?: unknown;
+      };
       if (typeof data.say !== "string" || !data.say.trim()) return null;
+      // The turn went through — the lifecycle note was delivered.
+      pendingEventRef.current = null;
+      const rawKind = (data.action as { kind?: unknown } | null)?.kind;
       return {
         say: data.say,
         done: data.done === true,
@@ -485,6 +566,7 @@ export default function TalkClient() {
           data.choice === "eat" || data.choice === "swap" || data.choice === "delay"
             ? data.choice
             : null,
+        action: isGuidedActionKind(rawKind) ? rawKind : null,
       };
     } catch {
       return null;
@@ -532,6 +614,32 @@ export default function TalkClient() {
     }
     const choice = parseChoice(text);
     if (choice) backgroundChoiceRef.current = choice;
+  }
+
+  // One heard answer, fully ingested: shown, added to the running
+  // transcript, background-parsed into the journal, note persisted.
+  // Shared by the conversation loop and the action-proposal answer,
+  // so both paths capture identically.
+  function ingestAnswer(raw: string) {
+    setHeard(raw);
+    historyRef.current.push({ role: "user", text: raw });
+    captureInBackground(raw);
+    persistTranscriptNote();
+  }
+
+  // The driving gate's close: the same deferred ending wherever
+  // driving surfaces — mid-conversation or in an action-proposal
+  // answer. The conversation stops, full stop.
+  async function handleDrivingDeferred(): Promise<void> {
+    setCurrentLine(DEFERRED_LINE);
+    historyRef.current.push({ role: "brain", text: DEFERRED_LINE });
+    persistTranscriptNote();
+    await speakAloud(DEFERRED_LINE);
+    if (!aliveRef.current) return;
+    sessionOverRef.current = true;
+    setFinishKind("deferred");
+    setClosingLine("We'll talk it through when you're parked. Your plan is here when you stop.");
+    setPhase("finished");
   }
 
   // The transcript as stored on the entry. journal.ts caps note at
@@ -929,9 +1037,11 @@ export default function TalkClient() {
       const entries = await listEntries();
       recentRef.current = buildRecentJournal(entries, entry?.id ?? null);
       todayRef.current = buildTodayJournal(entries, entry?.id ?? null);
+      sessionOutcomesRef.current = buildSessionOutcomes(entries, entry?.id ?? null);
     } catch {
       recentRef.current = [];
       todayRef.current = [];
+      sessionOutcomesRef.current = [];
     }
     // The conversation opens with the brain's own live greeting —
     // the /api/converse opener on empty history, spoken Fish-first
@@ -940,18 +1050,104 @@ export default function TalkClient() {
     await runFreeform();
   }
 
+  // A paced wait that the "End exercise" escape can cut short: ticks
+  // in quarter seconds and stops early when the abort flag is set.
+  async function waitAbortable(seconds: number): Promise<void> {
+    const ticks = Math.max(1, Math.round(seconds * 4));
+    for (let i = 0; i < ticks; i++) {
+      if (!aliveRef.current || actionAbortRef.current) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
+  // Lead one guided action, step by step, in voice (Day 6): the steps
+  // and their pacing come from the repertoire data (src/lib/actions
+  // .ts), with his plan filling the templates — the swap dealt for
+  // this moment, his why line. Each step is spoken Fish-first, then
+  // its paced quiet runs; a playReset step plays his own recorded
+  // reset line (his voice leads) and only speaks when there is none.
+  // The abort flag (the on-screen "End exercise", or ending the
+  // conversation) stops the run after the current line finishes —
+  // speech can't be hard-cancelled mid-line. On completion the
+  // session's journal entry gains which action ran, and the brain is
+  // told on the next turn so it can ask how the urge sits now.
+  async function runGuidedAction(kind: GuidedActionKind): Promise<void> {
+    const plan = planRef.current;
+    const entry = entryRef.current;
+    if (!plan || !entry) return;
+    const swapEl = assemblePlan(answersRef.current, plan).find((e) => e.kind === "swap");
+    const stocked: string[] = [];
+    for (const { options } of plan.triggerOptions) {
+      for (const option of options) if (option.trim()) stocked.push(option.trim());
+    }
+    const steps = actionSteps(kind, {
+      swapText: swapEl?.text ?? stocked[0] ?? null,
+      whyLine: plan.whyLine.trim() || null,
+    });
+    if (!steps.length) return;
+    actionRanRef.current = true;
+    actionAbortRef.current = false;
+    setRunningActionLabel(actionLabel(kind));
+    setActionRunning(true);
+    setStatus("I'll lead — just follow along. End the exercise any time.");
+    let completed = true;
+    for (const step of steps) {
+      if (!aliveRef.current || actionAbortRef.current) {
+        completed = false;
+        break;
+      }
+      if (step.playReset) {
+        const reset = await getCue("reset").catch(() => null);
+        if (!aliveRef.current) break;
+        if (reset) {
+          await playBlob(reset.blob);
+        } else if (step.say) {
+          setCurrentLine(step.say);
+          await speakAloud(step.say);
+        }
+      } else if (step.say) {
+        setCurrentLine(step.say);
+        await speakAloud(step.say);
+      }
+      if (!aliveRef.current || actionAbortRef.current) {
+        completed = false;
+        break;
+      }
+      if (step.waitSeconds > 0) await waitAbortable(step.waitSeconds);
+      if (actionAbortRef.current) completed = false;
+    }
+    setActionRunning(false);
+    setStatus("");
+    if (!aliveRef.current) return;
+    if (completed) {
+      updateEntry(entry.id, { sessionAction: actionLabel(kind) }).catch(() => {});
+      const marker = `(You led us through: ${actionLabel(kind)}.)`;
+      historyRef.current.push({ role: "brain", text: marker });
+      persistTranscriptNote();
+      pendingEventRef.current = { type: "action-completed", kind };
+    }
+    // An aborted run writes nothing and tells the brain nothing: the
+    // conversation just continues, and the record stays honest.
+  }
+
   // The free-form conversation loop: brain speaks (Fish-first), user
   // answers out loud, background parsers quietly fill the journal,
   // repeat — until the brain closes, the user goes quiet, the turn
-  // cap hits, or the driving gate fires. If the Meta key is not
-  // configured, the whole conversation hands off to the scripted
+  // cap hits, or the driving gate fires. A reply carrying a
+  // guided-action directive is a proposal: its line is spoken, the
+  // answer is heard, and a spoken yes runs the action (led by
+  // runGuidedAction) before the loop continues. If the Meta key is
+  // not configured, the whole conversation hands off to the scripted
   // spine flow (askQuestion and everything below it).
   async function runFreeform() {
+    freeformRef.current = true;
     let failures = 0;
     for (let turn = 0; turn < 14; turn++) {
       const res = await converseTurn();
       if (!aliveRef.current) return;
       if (res === "not-configured") {
+        // Scripted mode: no guided actions, no outcome question.
+        freeformRef.current = false;
         // The scripted flow opens personably too: a warm, plain
         // greeting shaped by the part of day, then the spine's first
         // question as before.
@@ -968,7 +1164,7 @@ export default function TalkClient() {
       if (res === null) {
         failures += 1;
         if (failures >= 2 || turn > 0) {
-          finishFreeform(null, "");
+          await closeSession(null, "");
           return;
         }
         continue;
@@ -981,7 +1177,7 @@ export default function TalkClient() {
       await speakAloud(res.say);
       if (!aliveRef.current) return;
       if (res.done) {
-        finishFreeform(res.choice, res.say);
+        await closeSession(res.choice, res.say);
         return;
       }
       let raw = await captureAnswerText();
@@ -994,28 +1190,68 @@ export default function TalkClient() {
       }
       if (!raw) {
         // The user has gone quiet — close gracefully with the plan.
-        finishFreeform(null, "");
+        await closeSession(null, "");
         return;
       }
-      setHeard(raw);
-      historyRef.current.push({ role: "user", text: raw });
-      captureInBackground(raw);
-      persistTranscriptNote();
+      ingestAnswer(raw);
       if (answersRef.current.driving) {
-        // The driving gate, enforced here as well as in the prompt:
-        // the conversation stops, full stop.
-        setCurrentLine(DEFERRED_LINE);
-        historyRef.current.push({ role: "brain", text: DEFERRED_LINE });
-        persistTranscriptNote();
-        await speakAloud(DEFERRED_LINE);
-        if (!aliveRef.current) return;
-        setFinishKind("deferred");
-        setClosingLine("We'll talk it through when you're parked. Your plan is here when you stop.");
-        setPhase("finished");
+        await handleDrivingDeferred();
         return;
+      }
+      if (res.action && !actionRanRef.current) {
+        // That reply proposed a guided action, and the answer just
+        // ingested was his answer to the proposal. A spoken yes runs
+        // it now; a pass — or anything else — lets it go and the
+        // loop answers what he actually said (the brain is told he
+        // passed, so it never re-offers it).
+        const verdict = parseActionResponse(raw);
+        if (verdict === "accept") {
+          await runGuidedAction(res.action);
+          if (!aliveRef.current || sessionOverRef.current) return;
+        } else {
+          pendingEventRef.current = { type: "action-declined", kind: res.action };
+        }
       }
     }
-    finishFreeform(null, "");
+    await closeSession(null, "");
+  }
+
+  // The one close path for the free-form conversation (Day 6):
+  // every free-form ending — the brain's done, the turn cap, going
+  // quiet, the user ending it — funnels through here, and the first
+  // caller wins. Before the finish, the session record gets its
+  // outcome: the app asks out loud, in plain words, whether that was
+  // a good outcome or one to work on, and his spoken answer is parsed
+  // deterministically into his mark — ambiguous stays unmarked,
+  // nothing is inferred. The ask belongs to the free-form
+  // conversation only (the scripted fallback never asks), and only
+  // when he actually took part.
+  async function closeSession(choice: FinalChoice | null, say: string): Promise<void> {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    sessionOverRef.current = true;
+    const entry = entryRef.current;
+    const tookPart = historyRef.current.some((t) => t.role === "user");
+    if (freeformRef.current && entry && tookPart && !outcomeAskedRef.current) {
+      outcomeAskedRef.current = true;
+      setCurrentLine(OUTCOME_QUESTION);
+      setStatus("");
+      historyRef.current.push({ role: "brain", text: OUTCOME_QUESTION });
+      persistTranscriptNote();
+      await speakAloud(OUTCOME_QUESTION);
+      if (aliveRef.current) {
+        const raw = await captureAnswerText();
+        if (!aliveRef.current) return;
+        if (raw) {
+          ingestAnswer(raw);
+          const outcome = parseOutcome(raw);
+          if (outcome) {
+            updateEntry(entry.id, { sessionOutcome: outcome }).catch(() => {});
+          }
+        }
+      }
+    }
+    finishFreeform(choice ?? backgroundChoiceRef.current, say);
   }
 
   // Free-form write-back and close: the entry gets the final choice
@@ -1045,7 +1281,13 @@ export default function TalkClient() {
     setPhase("finished");
   }
 
-  function endConversation() {
+  // The user's own end: stop any capture, cut any guided action
+  // short, then close through the same path as every other ending —
+  // in the free-form conversation that includes the outcome question,
+  // so his record gets its mark; in the scripted flow it ends as it
+  // always did, with the plan card untouched.
+  async function endConversation(): Promise<void> {
+    actionAbortRef.current = true;
     stopRecordingRef.current?.();
     textResolverRef.current?.("");
     persistTranscriptNote();
@@ -1054,6 +1296,11 @@ export default function TalkClient() {
     } catch {
       // Nothing to cancel.
     }
+    if (freeformRef.current) {
+      await closeSession(null, "");
+      return;
+    }
+    sessionOverRef.current = true;
     setFinishKind("ended");
     setClosingLine("Conversation ended. Nothing was scored, nothing reset.");
     setPhase("finished");
@@ -1077,11 +1324,16 @@ export default function TalkClient() {
     return (
       <div className="mt-10">
         <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-bold text-stone-900">Just talk.</h2>
+          <h2 className="text-2xl font-bold text-stone-900">Talk with me.</h2>
           <p className="mt-2 leading-relaxed text-stone-600">
             Your second brain asks one question at a time, out loud. You answer out loud. From
             your answers it deals your own plan back — your why, your if-then, your swap — in
             your words. No menus, nothing to tap through.
+          </p>
+          <p className="mt-3 leading-relaxed text-stone-600">
+            When the moment is ready, it may offer to lead one of your own moves — five deep
+            breaths, a stocked swap, a short walk — step by step, out loud. Say yes, or say not
+            now; either way the conversation just carries on.
           </p>
           <p className="mt-3 leading-relaxed text-stone-600">
             Your answers are heard on this device and written into your journal here. Nothing is
@@ -1177,6 +1429,20 @@ export default function TalkClient() {
         )}
         {heard && <p className="mt-3 text-sm text-stone-500">Heard: “{heard}”</p>}
 
+        {actionRunning && (
+          <div className="mt-6">
+            <p className="text-lg font-medium text-stone-700">{runningActionLabel} — I'm leading.</p>
+            <button
+              type="button"
+              onClick={() => {
+                actionAbortRef.current = true;
+              }}
+              className="mt-4 w-full rounded-full bg-stone-700 px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-stone-800"
+            >
+              End exercise
+            </button>
+          </div>
+        )}
         {captureMode === "recording" && (
           <button
             type="button"
@@ -1211,7 +1477,7 @@ export default function TalkClient() {
       <div className="mt-6 text-center">
         <button
           type="button"
-          onClick={endConversation}
+          onClick={() => void endConversation()}
           className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
         >
           End conversation

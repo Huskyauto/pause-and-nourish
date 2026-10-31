@@ -8,11 +8,12 @@ export default function TalkPage() {
         ← Back
       </Link>
       <h1 className="mt-4 text-center text-3xl font-bold tracking-tight text-stone-900">
-        Talk it through
+        Talk with me
       </h1>
       <p className="mx-auto mt-2 max-w-md text-center leading-relaxed text-stone-600">
         A conversation, not a form. Your second brain asks — you answer out loud — and it deals
-        your own plan back to you.
+        your own plan back to you. When the moment is ready, it can lead one of your moves out
+        loud, step by step.
       </p>
       <TalkClient />
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
