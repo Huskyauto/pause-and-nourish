@@ -167,6 +167,22 @@ function formatHour(hour: number): string {
 
 const QUESTION_KINDS: CueKind[] = ["q1", "q2", "q3", "q4", "q5"];
 
+// Spoken-answer endpointing (Bob's live-test fix, 2026-10-31): a
+// recording turn ends when HE stops talking — after speech has been
+// heard, ~1.8 s of continuous quiet ends the turn automatically —
+// never on a fixed short clock while he is mid-sentence (the old
+// 12-second cap cut him off mid-conversation). The hard ceiling only
+// bounds a turn that never goes quiet, and what was recorded by then
+// is transcribed like any other turn end, never discarded. The
+// ■ Done button stays as his manual override at all times.
+const ANSWER_SILENCE_MS = 1800;
+const ANSWER_MAX_MS = 120000;
+// Mic level (RMS over the analyser's float time-domain samples) that
+// counts as speech. Kept low on purpose: missing quiet speech would
+// end turns early — the exact failure this fix removes — while
+// ordinary room noise sits below it.
+const SPEECH_RMS_THRESHOLD = 0.02;
+
 // Minimal typing for the browser's speech recognition fallback (used
 // only when the Meta key isn't in yet — never the primary path).
 interface SpeechRecognitionLike {
@@ -190,7 +206,10 @@ function speechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 
 // Meta's batch ASR endpoint only accepts mono 16-bit PCM WAV, so the
 // recorded answer (webm/opus) is decoded, downmixed, resampled to
-// 24 kHz, and re-encoded as WAV here in the browser before upload.
+// 16 kHz, and re-encoded as WAV here in the browser before upload.
+// 16 kHz (the endpoint accepts 16 or 24 kHz) keeps a full-length
+// 120-second answer at ≈3.8 MB — under the serverless request-body
+// limit that 24 kHz (≈5.8 MB) would break.
 async function blobToWav(blob: Blob): Promise<Blob | null> {
   try {
     const AC: typeof AudioContext | undefined =
@@ -201,7 +220,7 @@ async function blobToWav(blob: Blob): Promise<Blob | null> {
     const ctx = new AC();
     const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
     void ctx.close();
-    const targetRate = 24000;
+    const targetRate = 16000;
     const frames = Math.max(1, Math.ceil(decoded.duration * targetRate));
     const offline = new OfflineAudioContext(1, frames, targetRate);
     const src = offline.createBufferSource();
@@ -664,6 +683,18 @@ export default function TalkClient() {
 
   // ---------- answer capture ----------
 
+  // The ONE recorder behind every spoken answer in the talk flow —
+  // conversation turns, the action-proposal answer, the outcome
+  // reply, and the one-word capture all come through captureAnswerText
+  // into here, so the endpointing below applies everywhere from
+  // this single place. The turn ends three ways, all equivalent —
+  // each delivers whatever was recorded for transcription:
+  //   1. silence endpointing: once speech has been heard on the mic,
+  //      ANSWER_SILENCE_MS of continuous quiet stops the recording;
+  //   2. his tap on ■ Done (stopRecordingRef) — the manual override;
+  //   3. the ANSWER_MAX_MS ceiling, for a turn that never goes quiet.
+  // The level watch is best-effort: if an AudioContext can't run,
+  // ways 2 and 3 still bound the turn exactly as before.
   function recordAnswerAudio(): Promise<Blob | null> {
     return new Promise((resolve) => {
       (async () => {
@@ -677,10 +708,14 @@ export default function TalkClient() {
             if (e.data.size > 0) chunks.push(e.data);
           };
           let settled = false;
+          let meterTimer: number | null = null;
+          let audioCtx: AudioContext | null = null;
           const finish = () => {
             if (settled) return;
             settled = true;
             stopRecordingRef.current = null;
+            if (meterTimer !== null) window.clearInterval(meterTimer);
+            if (audioCtx) audioCtx.close().catch(() => {});
             stream.getTracks().forEach((t) => t.stop());
             const blob = chunks.length
               ? new Blob(chunks, { type: recorder.mimeType || "audio/webm" })
@@ -691,8 +726,45 @@ export default function TalkClient() {
           stopRecordingRef.current = () => {
             if (recorder.state !== "inactive") recorder.stop();
           };
+          // The level watch: an analyser on the same mic stream,
+          // sampled ten times a second. Quiet BEFORE he starts never
+          // ends the turn — only quiet after speech does.
+          try {
+            const AC: typeof AudioContext | undefined =
+              window.AudioContext ??
+              (window as unknown as { webkitAudioContext?: typeof AudioContext })
+                .webkitAudioContext;
+            if (AC) {
+              audioCtx = new AC();
+              void audioCtx.resume().catch(() => {});
+              const source = audioCtx.createMediaStreamSource(stream);
+              const analyser = audioCtx.createAnalyser();
+              analyser.fftSize = 512;
+              source.connect(analyser);
+              const samples = new Float32Array(analyser.fftSize);
+              let heardSpeech = false;
+              let lastSpeechAt = performance.now();
+              meterTimer = window.setInterval(() => {
+                if (recorder.state === "inactive") return;
+                analyser.getFloatTimeDomainData(samples);
+                let sum = 0;
+                for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+                const rms = Math.sqrt(sum / samples.length);
+                const now = performance.now();
+                if (rms >= SPEECH_RMS_THRESHOLD) {
+                  heardSpeech = true;
+                  lastSpeechAt = now;
+                } else if (heardSpeech && now - lastSpeechAt >= ANSWER_SILENCE_MS) {
+                  stopRecordingRef.current?.();
+                }
+              }, 100);
+            }
+          } catch {
+            // No metering on this device — the ceiling and the
+            // ■ Done button still bound the turn.
+          }
           recorder.start();
-          setTimeout(() => stopRecordingRef.current?.(), 12000);
+          setTimeout(() => stopRecordingRef.current?.(), ANSWER_MAX_MS);
         } catch {
           resolve(null);
         }
@@ -759,7 +831,7 @@ export default function TalkClient() {
     }
     // Primary path: record, then Muse Voice Transcribe via the server.
     setCaptureMode("recording");
-    setStatus("Listening — tap Done when you've said it.");
+    setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
     const blob = await recordAnswerAudio();
     setCaptureMode("idle");
     if (!blob) return null;
