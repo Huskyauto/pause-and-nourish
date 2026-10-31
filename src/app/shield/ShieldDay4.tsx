@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  getCue,
   listEntries,
   matchPlannedResponse,
   type Directness,
   type ShieldPlan,
-  type VoiceChoice,
 } from "@/lib/journal";
 
-// Day 4 Shield sections: the approach-worded if-then, the three-way
-// second-brain voice choice, and the directness picker under the §2.6
-// firmness rules (weaken next day / strengthen instant). All calm-time
-// setup; nothing here is asked during a craving.
+// Day 4 Shield sections: the approach-worded if-then and the directness
+// picker under the §2.6 firmness rules (weaken next day / strengthen
+// instant). All calm-time setup; nothing here is asked during a craving.
+// (The three-way second-brain voice-choice picker that used to live here
+// was retired 2026-10-31: it no longer steered anything — conversation
+// voice is the set-up voice regardless, and the reset recording plays
+// whenever one exists. The shield page now carries a plain "Your voice"
+// panel instead. The stored `voiceChoice` field is untouched.)
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
@@ -125,188 +127,6 @@ export function IfThenSection({
           <span className="font-semibold">Armed:</span> If {plan.ifThen.when}, then I {plan.ifThen.then}.
         </p>
       )}
-    </div>
-  );
-}
-
-// ---------- Second-brain voice choice ----------
-
-const VOICE_OPTIONS: { value: VoiceChoice; title: string; body: string }[] = [
-  {
-    value: "own",
-    title: "Record your own",
-    body: "The voice that reaches you is yours — recorded here, on this device. The recommended way in.",
-  },
-  {
-    value: "phone",
-    title: "Use phone voice",
-    body: "Your device's built-in voice reads your words out loud — a generated voice, not yours.",
-  },
-  {
-    value: "later",
-    title: "Decide later",
-    body: "The app stays quiet until you pick. Everything else works the same.",
-  },
-];
-
-export function VoiceChoiceSection({
-  plan,
-  onUpdate,
-  cueVersion = 0,
-}: {
-  plan: ShieldPlan;
-  onUpdate: (next: ShieldPlan) => void;
-  // Bumped by the page whenever the cue is saved or deleted, so the
-  // preview below re-checks what recording actually exists.
-  cueVersion?: number;
-}) {
-  const [previewNote, setPreviewNote] = useState("");
-  const [cueUrl, setCueUrl] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
-
-  // The preview plays the saved moment-cue recording whenever one
-  // exists, so he can hear what he recorded. Since the all-canned-out
-  // purge (2026-10-31) no recording plays in a live flow — the brain
-  // composes every spoken line in the moment — so this preview is a
-  // calm-time listen-back, not a rehearsal of the moment. (The one
-  // recording that still plays anywhere is the reset line, inside
-  // the guided reset step; it has its own player in its own section
-  // below.) TTS is used only when phone voice is the picked channel
-  // and no recording exists, and it is labeled as the phone's voice.
-  // (Comment corrected in the 2026-10-31 code review — the earlier
-  // text claimed the SOS screen plays the recording, which the purge
-  // removed.)
-  useEffect(() => {
-    let live = true;
-    getCue("cue")
-      .then((cue) => {
-        if (!live) return;
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-        urlRef.current = cue ? URL.createObjectURL(cue.blob) : null;
-        setCueUrl(urlRef.current);
-      })
-      .catch(() => {
-        if (live) setCueUrl(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [cueVersion]);
-
-  useEffect(
-    () => () => {
-      audioRef.current?.pause();
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      try {
-        window.speechSynthesis?.cancel();
-      } catch {
-        // Nothing speaking.
-      }
-    },
-    [],
-  );
-
-  function stopPreviewSounds() {
-    audioRef.current?.pause();
-    try {
-      window.speechSynthesis?.cancel();
-    } catch {
-      // Nothing speaking.
-    }
-  }
-
-  function preview() {
-    stopPreviewSounds();
-    if (cueUrl) {
-      const audio = new Audio(cueUrl);
-      audioRef.current = audio;
-      // Honest preview (same discipline as the SOS screen): the success
-      // note lands only once playback has actually started. If play()
-      // is rejected, say so plainly and point at the player with
-      // controls in "Your voice" just below — never claim a success
-      // the user didn't hear.
-      setPreviewNote("");
-      audio
-        .play()
-        .then(() => {
-          if (audioRef.current === audio) {
-            setPreviewNote("That was your recording — your own voice.");
-          }
-        })
-        .catch(() => {
-          if (audioRef.current === audio) {
-            setPreviewNote(
-              "That preview couldn't play just now. Your recording is saved — you can play it with the player in “Your voice” just below.",
-            );
-          }
-        });
-      return;
-    }
-    if (plan.voiceChoice === "phone") {
-      const text = plan.whyLine.trim() || "I'm in a moment. I want to feel good tomorrow.";
-      try {
-        const synth = window.speechSynthesis;
-        if (!synth) {
-          setPreviewNote("This device has no built-in voice to preview with.");
-          return;
-        }
-        synth.speak(new SpeechSynthesisUtterance(text));
-        setPreviewNote(
-          plan.whyLine.trim()
-            ? "That was your phone's built-in voice reading your why — not a recording of you. Phone voice is the channel you picked."
-            : "That was your phone's built-in voice reading a sample line — not a recording of you. Once your why is set, the preview reads that instead.",
-        );
-      } catch {
-        setPreviewNote("Preview isn't available on this device.");
-      }
-      return;
-    }
-    setPreviewNote(
-      "Nothing of yours to play yet — no recording is saved on this device. In the moment, your why shows on screen in words.",
-    );
-  }
-
-  const previewHelp = cueUrl
-    ? "Preview plays your recording — your own voice."
-    : plan.voiceChoice === "phone"
-      ? "Preview uses your phone's built-in voice — it won't sound like you."
-      : "No recording yet — preview has nothing of yours to play.";
-
-  return (
-    <div>
-      <p className="mt-1 text-sm leading-relaxed text-stone-600">
-        Pick at a calm time; change it any time, right here. Nothing is recorded or sent anywhere by
-        this choice itself.
-      </p>
-      <div className="mt-4 flex flex-col gap-3">
-        {VOICE_OPTIONS.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={plan.voiceChoice === o.value}
-            onClick={() => onUpdate({ ...plan, voiceChoice: o.value })}
-            className={`${optionBase} ${plan.voiceChoice === o.value ? optionActive : optionIdle}`}
-          >
-            <span className="block font-semibold text-stone-900">{o.title}</span>
-            <span className="mt-1 block text-sm leading-relaxed text-stone-600">{o.body}</span>
-          </button>
-        ))}
-      </div>
-      {cueUrl && plan.voiceChoice !== "own" && (
-        <p className="mt-3 text-sm leading-relaxed text-stone-600">
-          You have a recording saved — you can hear it with the preview below.
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={preview}
-        className="mt-4 rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
-      >
-        ▶ Preview what you&apos;ll hear
-      </button>
-      <p className="mt-2 text-sm text-stone-600">{previewHelp}</p>
-      {previewNote && <p className="mt-2 text-sm text-stone-600">{previewNote}</p>}
     </div>
   );
 }

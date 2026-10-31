@@ -8,7 +8,6 @@ import {
   applyDueDirectness,
   DirectnessSection,
   IfThenSection,
-  VoiceChoiceSection,
 } from "./ShieldDay4";
 import { PlacesSection, RiskWindowsSection } from "./PlacesWindows";
 import { MaterialSlotsSection } from "./MaterialSlots";
@@ -122,12 +121,16 @@ export default function ShieldPage() {
       </p>
 
       <section className="mt-10">
-        <h2 className="text-xl font-semibold text-stone-900">How your second brain reaches you</h2>
-        <VoiceChoiceSection plan={plan} onUpdate={update} />
-      </section>
-
-      <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          When you talk with your second brain, it speaks out loud in the voice set up for you —
+          your own cloned voice, or, if you started with the story interview, the calm voice you
+          chose there. There&apos;s nothing to pick here; that&apos;s simply the voice it uses.
+        </p>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          The one recording in the app is yours: the reset line you record just below, in your own
+          voice. It plays inside the guided reset step.
+        </p>
         <div className="mt-5">
           <button
             type="button"
