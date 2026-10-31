@@ -32,12 +32,18 @@ import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 const ANSWER_SILENCE_MS = 1800;
 const ANSWER_MAX_MS = 120000;
 const SPEECH_RMS_THRESHOLD = 0.02;
-// Latency build (2026-10-31), mirroring TalkClient: an auto-opened
-// mic that hears no speech within this window closes quietly onto
-// the tap-to-answer state instead of recording silence to the
-// ceiling; browser recognition gets the same bounds as Talk's.
-const AUTO_NO_SPEECH_MS = 9000;
-const SR_AUTO_TIMEOUT_MS = 12000;
+// Latency build (2026-10-31), mirroring TalkClient — same values,
+// same reasoning: an auto-opened mic waits out its no-speech grace
+// for the user to START speaking before closing quietly onto the
+// tap-to-answer state instead of recording silence to the ceiling,
+// and the FIRST answer of the interview gets the longer grace
+// (retuned the same evening from Bob's run-through: the mic was
+// closing before he began). recognizeOnce restarts recognition
+// through the window (see src/lib/recognize.ts); the recorder
+// path's watchdog runs for the same window. Tapped listens are
+// bounded by SR_MANUAL_TIMEOUT_MS only.
+const FIRST_TURN_NO_SPEECH_MS = 20000;
+const AUTO_NO_SPEECH_MS = 15000;
 const SR_MANUAL_TIMEOUT_MS = 20000;
 
 interface Turn {
@@ -311,9 +317,12 @@ export default function InterviewClient() {
 
   // Hear one answer. The interview is already an auto-listen loop —
   // askBrain calls this the moment a question finishes speaking —
-  // and auto = true marks that auto-open: silence then closes
-  // quietly onto the Answer button. A deliberate Answer tap calls
-  // with auto = false and gets the manual behavior (no watchdog).
+  // and auto = true marks that auto-open: silence closes quietly
+  // onto the Answer button, but only once the no-speech grace has
+  // fully elapsed — the first answer of the interview (no user
+  // turn captured yet) gets the longer grace. A deliberate Answer
+  // tap calls with auto = false and gets the manual behavior (no
+  // watchdog).
   //
   // Where the platform offers browser recognition it hears the
   // answer (finals only, straight from the platform's endpointing);
@@ -325,10 +334,16 @@ export default function InterviewClient() {
     setAwaitingAnswer(false);
     setPhase("listening");
     setBrainState("listening");
+    const graceMs = auto
+      ? historyRef.current.some((t) => t.role === "user")
+        ? AUTO_NO_SPEECH_MS
+        : FIRST_TURN_NO_SPEECH_MS
+      : undefined;
     if (!srBrokenRef.current && speechRecognitionAvailable()) {
       setStatus("Listening — just talk.");
       const heard = await recognizeOnce({
-        timeoutMs: auto ? SR_AUTO_TIMEOUT_MS : SR_MANUAL_TIMEOUT_MS,
+        graceMs,
+        timeoutMs: SR_MANUAL_TIMEOUT_MS,
         registerAbort: (fn) => {
           srAbortRef.current = fn;
         },
@@ -350,7 +365,7 @@ export default function InterviewClient() {
       }
     }
     setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
-    const { blob, noSpeech } = await recordAnswerAudio(auto ? AUTO_NO_SPEECH_MS : undefined);
+    const { blob, noSpeech } = await recordAnswerAudio(auto ? graceMs : undefined);
     if (!aliveRef.current) return;
     if (noSpeech) {
       parkOrMiss(false);

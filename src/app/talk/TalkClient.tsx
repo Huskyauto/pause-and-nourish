@@ -171,17 +171,27 @@ const UNAVAILABLE_LINE = "I can't reach the brain right now.";
 // ■ Done button stays as his manual override at all times.
 const ANSWER_SILENCE_MS = 1800;
 const ANSWER_MAX_MS = 120000;
-// Auto-listen (latency build, 2026-10-31): when the mic opens on
-// its own after a brain line, a user who says nothing must not hang
-// the conversation — if no speech has been heard within this window
-// the capture closes quietly and the turn waits for a tap instead.
-// Deliberate answers (a tap, a retry) are never cut by it.
-const AUTO_NO_SPEECH_MS = 9000;
-// Browser-recognition listen bounds: the recognizer endpoints on
-// its own, these only bound a recognizer that never does. The
-// auto-open gets the shorter bound — it is the one that must close
-// quietly when nobody answers.
-const SR_AUTO_TIMEOUT_MS = 12000;
+// Auto-listen no-speech grace (latency build, 2026-10-31; retuned
+// the same evening from Bob's run-through): when the mic opens on
+// its own after a brain line, this is how long it waits for him to
+// START speaking before closing quietly and parking the turn on
+// tap-to-answer. The FIRST answer of a conversation gets the longer
+// grace — right at the start he is still settling in, and his
+// words on the run-through were that the mic "closes out" if he
+// doesn't start speaking right away. (Under the old 9 s window the
+// recognizer's own few-second no-speech timeout usually ended the
+// capture even sooner; recognizeOnce's grace window now restarts
+// recognition through the wait instead of settling on its first
+// quiet end — see src/lib/recognize.ts.) Once speech HAS started,
+// neither window applies: endpointing after speech is
+// ANSWER_SILENCE_MS, unchanged. Deliberate answers (a tap, a
+// retry) are never cut by either window.
+const FIRST_TURN_NO_SPEECH_MS = 20000;
+const AUTO_NO_SPEECH_MS = 15000;
+// Browser-recognition bound for deliberate (tapped) listens: the
+// recognizer endpoints on its own, this only bounds a recognizer
+// that never does. Auto-opens are bounded by the grace windows
+// above (passed to recognizeOnce as graceMs).
 const SR_MANUAL_TIMEOUT_MS = 20000;
 // Mic level (RMS over the analyser's float time-domain samples) that
 // counts as speech. Kept low on purpose: missing quiet speech would
@@ -903,8 +913,11 @@ export default function TalkClient() {
   // Muse Voice Transcribe path, which remains the fallback
   // wherever recognition is unavailable. "no-speech" is only
   // produced on an auto-open (auto = true): silence there closes
-  // quietly rather than hanging.
-  async function captureOnce(auto: boolean): Promise<CaptureOutcome> {
+  // quietly rather than hanging — but only once graceMs has fully
+  // elapsed with no speech started (recognizeOnce restarts
+  // recognition through the window; the recorder path's watchdog
+  // runs for the same window).
+  async function captureOnce(auto: boolean, graceMs?: number): Promise<CaptureOutcome> {
     if (capturePathRef.current === "text") {
       setStatus("Type this one answer.");
       const text = await captureViaText();
@@ -915,7 +928,8 @@ export default function TalkClient() {
       setStatus("Listening — just talk.");
       captureAbortedRef.current = false;
       const heard = await recognizeOnce({
-        timeoutMs: auto ? SR_AUTO_TIMEOUT_MS : SR_MANUAL_TIMEOUT_MS,
+        graceMs: auto ? graceMs : undefined,
+        timeoutMs: SR_MANUAL_TIMEOUT_MS,
         registerAbort: (fn) => {
           captureAbortRef.current = fn;
         },
@@ -936,7 +950,7 @@ export default function TalkClient() {
     setCaptureMode("recording");
     setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
     captureAbortedRef.current = false;
-    const { blob, noSpeech } = await recordAnswerAudio(auto ? AUTO_NO_SPEECH_MS : undefined);
+    const { blob, noSpeech } = await recordAnswerAudio(auto ? graceMs : undefined);
     setCaptureMode("idle");
     if (captureAbortedRef.current) return { kind: "to-text" };
     if (noSpeech) return { kind: "no-speech" };
@@ -979,20 +993,28 @@ export default function TalkClient() {
   //
   // Auto-listen (the conversation loop passes autoListen): the mic
   // opens on its own the moment the brain's line ends — no tap —
-  // exactly once per brain turn. If nobody answers, the capture
-  // closes quietly and the turn PARKS on tap-to-answer (a "Tap to
-  // answer" button and a type-instead escape, both on screen)
-  // instead of re-asking or looping. Deliberate captures — the
-  // outcome question, the one-word capture, a tap after a park —
-  // run without the flag and behave exactly as they always have.
+  // exactly once per brain turn. If nobody answers within the
+  // no-speech grace, the capture closes quietly and the turn PARKS
+  // on tap-to-answer (a "Tap to answer" button and a type-instead
+  // escape, both on screen) instead of re-asking or looping. The
+  // first answer of the conversation — no user turn captured yet —
+  // gets the longer grace (FIRST_TURN_NO_SPEECH_MS). Deliberate
+  // captures — the outcome question, the one-word capture, a tap
+  // after a park — run without the flag and behave exactly as they
+  // always have.
   async function captureAnswerText(opts?: {
     autoListen?: boolean;
   }): Promise<string | null> {
     brainListen();
     const auto = opts?.autoListen === true;
     if (auto) setAutoListen(true);
+    const graceMs = auto
+      ? historyRef.current.some((t) => t.role === "user")
+        ? AUTO_NO_SPEECH_MS
+        : FIRST_TURN_NO_SPEECH_MS
+      : undefined;
     try {
-      let outcome = await captureOnce(auto);
+      let outcome = await captureOnce(auto, graceMs);
       if (outcome.kind === "to-text") return await captureViaText();
       if (outcome.kind === "heard") return outcome.text;
       if (outcome.kind === "none") return null;
