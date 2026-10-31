@@ -487,6 +487,7 @@ function momentContext(
   riskWindow: RiskWindowContext | null,
   today: TodayJournalItem[],
   profile: UserProfile | null,
+  placeLabel: string | null,
 ): string {
   const lines: string[] = [
     profile
@@ -512,6 +513,19 @@ function momentContext(
       profile
         ? `- Not in a declared risk window right now. Their next one: "${riskWindow.nextLabel}"${riskWindow.nextStartsAt ? `, starting ${riskWindow.nextStartsAt}` : ""}.`
         : `- Not in a declared risk window right now. His next one: "${riskWindow.nextLabel}"${riskWindow.nextStartsAt ? `, starting ${riskWindow.nextStartsAt}` : ""}.`,
+    );
+  }
+  if (placeLabel === "away") {
+    lines.push(
+      profile
+        ? "- Where they are: not at any of the places they saved at calm time — out and about. (The device matched none of their places; that is all you know — no coordinates ever reach you.)"
+        : "- Where he is: not at any of the places he saved at calm time — out and about. (The device matched none of his places; that is all you know — no coordinates ever reach you.)",
+    );
+  } else if (placeLabel) {
+    lines.push(
+      profile
+        ? `- Where they are: at "${placeLabel}" — a place they named and saved at calm time. You know this the way a person who knows their routine knows it: let it inform you naturally when it fits, and never announce it — no "I see you're at…" or anything that sounds like tracking.`
+        : `- Where he is: at "${placeLabel}" — a place he named and saved at calm time. You know this the way a person who knows his routine knows it: let it inform you naturally when it fits, and never announce it — no "I see you're at…" or anything that sounds like tracking.`,
     );
   }
   if (today.length) {
@@ -600,6 +614,7 @@ async function handleMoment(args: {
   dayType: DayType | null;
   riskWindow: RiskWindowContext | null;
   today: TodayJournalItem[];
+  placeLabel: string | null;
 }): Promise<Response> {
   if (!metaApiKey()) {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -609,7 +624,7 @@ async function handleMoment(args: {
     { role: "system", content: momentSystemPrompt(args.kind, name, args.directness) },
     {
       role: "user",
-      content: momentContext(args.localTime, args.dayType, args.riskWindow, args.today, args.profile),
+      content: momentContext(args.localTime, args.dayType, args.riskWindow, args.today, args.profile, args.placeLabel),
     },
     { role: "user", content: playbookContext(args.plan, args.recent) },
   ];
@@ -720,6 +735,17 @@ function coerceLocalTime(raw: unknown): LocalTimeContext | null {
 
 function coerceDayType(raw: unknown): DayType | null {
   return raw === "weekday" || raw === "weekend" ? raw : null;
+}
+
+// The place label: a saved place's name in the user's own words,
+// or "away" when a fix matched none of their places. Only the label
+// ever travels — the client resolves it on-device and coordinates
+// never leave the phone. Anything else (missing, wrong type, too
+// long) is treated as absent, exactly like a user with no places.
+function coercePlaceLabel(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const label = raw.trim().slice(0, 60);
+  return label ? label : null;
 }
 
 function coerceRiskWindow(raw: unknown): RiskWindowContext | null {
@@ -945,6 +971,7 @@ export async function POST(request: Request) {
   let localTime: LocalTimeContext | null = null;
   let dayType: DayType | null = null;
   let riskWindow: RiskWindowContext | null = null;
+  let placeLabel: string | null = null;
   let today: TodayJournalItem[] = [];
   let sessionOutcomes: SessionOutcomeItem[] = [];
   let event: ConverseEvent | null = null;
@@ -964,6 +991,7 @@ export async function POST(request: Request) {
       localTime?: unknown;
       dayType?: unknown;
       riskWindow?: unknown;
+      placeLabel?: unknown;
       todayJournal?: unknown;
       sessionOutcomes?: unknown;
       event?: unknown;
@@ -980,6 +1008,7 @@ export async function POST(request: Request) {
     localTime = coerceLocalTime(body?.localTime);
     dayType = coerceDayType(body?.dayType);
     riskWindow = coerceRiskWindow(body?.riskWindow);
+    placeLabel = coercePlaceLabel(body?.placeLabel);
     today = coerceToday(body?.todayJournal);
     sessionOutcomes = coerceOutcomes(body?.sessionOutcomes);
     event = coerceEvent(body?.event);
@@ -1016,6 +1045,7 @@ export async function POST(request: Request) {
       dayType,
       riskWindow,
       today,
+      placeLabel,
     });
   }
 
@@ -1041,7 +1071,7 @@ export async function POST(request: Request) {
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement, profile) },
-    { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile) },
+    { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile, placeLabel) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
   const record = sessionRecordContext(sessionOutcomes, profile);

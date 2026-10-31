@@ -19,6 +19,8 @@ import {
 } from "@/lib/journal";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
 import { speakLine } from "@/lib/speak";
+import { computeRiskWindowState } from "@/lib/riskWindows";
+import { getPlaceLabel } from "@/lib/places";
 import SecondBrain from "@/components/SecondBrain";
 
 // Day 3 pause flow, voice-first:
@@ -254,29 +256,6 @@ export default function PauseClient() {
     return "night";
   }
 
-  function momentRiskWindow(plan: ShieldPlan, now: Date) {
-    const windows = plan.riskWindows ?? [];
-    if (!windows.length) return { inWindow: false };
-    const hour = now.getHours() + now.getMinutes() / 60;
-    const active = windows.find((w) =>
-      w.startHour <= w.endHour
-        ? hour >= w.startHour && hour < w.endHour
-        : hour >= w.startHour || hour < w.endHour,
-    );
-    if (active) return { inWindow: true as const, label: active.label };
-    let next: { label: string; startHour: number; delta: number } | null = null;
-    for (const w of windows) {
-      let delta = w.startHour - hour;
-      if (delta <= 0) delta += 24;
-      if (!next || delta < next.delta) next = { label: w.label, startHour: w.startHour, delta };
-    }
-    if (!next) return { inWindow: false };
-    const h24 = Math.floor(next.startHour) % 24;
-    const suffix = h24 >= 12 ? "PM" : "AM";
-    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-    return { inWindow: false as const, nextLabel: next.label, nextStartsAt: `${h12} ${suffix}` };
-  }
-
   // The voice for a generated line: an intake user's chosen neutral
   // voice; the founder (no profile) gets his cloned voice by default.
   function momentVoice(): ProfileVoice | undefined {
@@ -327,6 +306,11 @@ export default function PauseClient() {
     }
     const now = new Date();
     const hour = now.getHours();
+    // The place label rides the moment context too — a saved
+    // place's name (or "away"), only when places exist and
+    // permission is already granted; otherwise the field is
+    // omitted and the request is exactly the old one.
+    const placeLabel = await getPlaceLabel().catch(() => null);
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
@@ -341,7 +325,8 @@ export default function PauseClient() {
           recentJournal,
           localTime: { hour, partOfDay: momentPartOfDay(hour) },
           dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
-          riskWindow: momentRiskWindow(plan, now),
+          riskWindow: computeRiskWindowState(plan, now),
+          ...(placeLabel ? { placeLabel } : {}),
           todayJournal,
         }),
       });

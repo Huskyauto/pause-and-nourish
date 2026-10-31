@@ -91,10 +91,14 @@ export interface ShieldPlan {
   // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
   ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
   voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later
-  // Declared risk windows (local hours, end may wrap past midnight).
-  // Optional: no setup surface collects them yet, so plans normally
-  // lack them — the talk context reads them only when present.
-  riskWindows?: { label: string; startHour: number; endHour: number }[];
+  // Declared risk windows (local fractional hours, end may wrap past
+  // midnight). Optional: plans that never used the setup surface lack
+  // them. `days` (0 = Sunday … 6 = Saturday) is the Day 7 addition:
+  // absent or empty means every day. The setup surface on the shield
+  // page collects these now; the shared computation lives in
+  // src/lib/riskWindows.ts and feeds the talk/moment context and the
+  // home plan card.
+  riskWindows?: { label: string; startHour: number; endHour: number; days?: number[] }[];
   directness?: Directness | null; // currently effective buddy directness
   directnessPending?: { level: Directness; effectiveFrom: string } | null; // §2.6: weakening lands next day
 }
@@ -142,6 +146,22 @@ export function hasUserProfile(profile: UserProfile | null | undefined): boolean
   return !!profile && profile.name.trim().length > 0;
 }
 
+// A place the user saved by standing in it (Place Shield setup half,
+// spec v1.1 §2–§3). Coordinates live ONLY in this record, on this
+// device: the places record sits in its own key in the shield store —
+// deliberately NOT inside the Shield Plan object — so a plan payload
+// sent to the converse route can never carry coordinates. The only
+// thing that ever leaves the device is a matched place's NAME (the
+// placeLabel context field); see src/lib/places.ts.
+export interface SavedPlace {
+  id: string;
+  name: string; // the user's own words — "Home", "the Cane's on Grand"
+  lat: number;
+  lng: number;
+  radiusM: number; // 100 / 150 / 250, default 150 (spec §2)
+  createdAt: string; // ISO timestamp
+}
+
 const DB_NAME = "pause-and-nourish";
 // v4 (Day 5): no schema change — the prompt-pack kinds are new KEYS in
 // the existing voiceCue store, not new stores. The bump exists so the
@@ -152,11 +172,13 @@ const JOURNAL_STORE = "journal";
 const SHIELD_STORE = "shieldPlan";
 const SHIELD_KEY = "plan";
 const PROFILE_KEY = "profile";
+const PLACES_KEY = "places";
 const CUE_STORE = "voiceCue";
 
 const LS_JOURNAL = "pn.journal";
 const LS_SHIELD = "pn.shieldPlan";
 const LS_PROFILE = "pn.userProfile";
+const LS_PLACES = "pn.places";
 const LS_CUE = "pn.voiceCue";
 const LS_RESET_CUE = "pn.voiceResetCue";
 
@@ -262,6 +284,24 @@ async function idbSaveUserProfile(profile: UserProfile): Promise<void> {
   const tx = db.transaction(SHIELD_STORE, "readwrite");
   await idbRequest(
     tx.objectStore(SHIELD_STORE).put({ key: PROFILE_KEY, profile, updatedAt: new Date().toISOString() }),
+  );
+  db.close();
+}
+
+async function idbGetPlaces(): Promise<SavedPlace[]> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readonly");
+  const rec = await idbRequest(tx.objectStore(SHIELD_STORE).get(PLACES_KEY));
+  db.close();
+  const places = (rec as { places?: SavedPlace[] } | undefined)?.places;
+  return Array.isArray(places) ? places : [];
+}
+
+async function idbSavePlaces(places: SavedPlace[]): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readwrite");
+  await idbRequest(
+    tx.objectStore(SHIELD_STORE).put({ key: PLACES_KEY, places, updatedAt: new Date().toISOString() }),
   );
   db.close();
 }
@@ -432,6 +472,19 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   );
 }
 
+// ---------- Saved places (on-device only — see SavedPlace above) ----------
+
+export async function getPlaces(): Promise<SavedPlace[]> {
+  return withFallback(idbGetPlaces, () => lsRead<SavedPlace[]>(LS_PLACES, []));
+}
+
+export async function savePlaces(places: SavedPlace[]): Promise<void> {
+  await withFallback(
+    () => idbSavePlaces(places),
+    () => lsWrite(LS_PLACES, places),
+  );
+}
+
 // ---------- Voice cue public API ----------
 
 export async function saveCue(blob: Blob, kind: CueKind = "cue"): Promise<void> {
@@ -519,6 +572,7 @@ export async function deleteEverything(): Promise<void> {
     lsWrite(LS_JOURNAL, []);
     localStorage.removeItem(LS_SHIELD);
     localStorage.removeItem(LS_PROFILE);
+    localStorage.removeItem(LS_PLACES);
     for (const kind of CUE_KINDS) {
       localStorage.removeItem(lsCueKey(kind));
     }

@@ -33,6 +33,8 @@ import {
   type TalkAnswers,
 } from "@/lib/spine";
 import { speakLineChecked } from "@/lib/speak";
+import { computeRiskWindowState } from "@/lib/riskWindows";
+import { getPlaceLabel } from "@/lib/places";
 import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 import {
   NEED_SPOKEN,
@@ -141,26 +143,11 @@ interface TodayJournalItem {
   learning: string | null;
 }
 
-// Whether he is inside a risk window he declared at calm time,
-// computed on-device at send time from the plan's declared windows.
-interface RiskWindowContext {
-  inWindow: boolean;
-  label?: string;
-  nextLabel?: string;
-  nextStartsAt?: string;
-}
-
 function partOfDayFor(hour: number): PartOfDay {
   if (hour >= 5 && hour < 12) return "morning";
   if (hour >= 12 && hour < 17) return "afternoon";
   if (hour >= 17 && hour < 22) return "evening";
   return "night";
-}
-
-function formatHour(hour: number): string {
-  const d = new Date();
-  d.setHours(Math.floor(hour) % 24, Math.round((hour % 1) * 60), 0, 0);
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 // The one status line of the can't-reach-the-brain state. It is a
@@ -527,31 +514,6 @@ export default function TalkClient() {
       }));
   }
 
-  // Risk-window state from the plan's declared windows, if it carries
-  // any (no setup surface collects them yet — normally none, and the
-  // route treats absence as "no window claims"). Windows may wrap
-  // past midnight (start after end).
-  function computeRiskWindow(plan: ShieldPlan, now: Date): RiskWindowContext {
-    const windows = plan.riskWindows ?? [];
-    if (!windows.length) return { inWindow: false };
-    const hour = now.getHours() + now.getMinutes() / 60;
-    const active = windows.find((w) =>
-      w.startHour <= w.endHour
-        ? hour >= w.startHour && hour < w.endHour
-        : hour >= w.startHour || hour < w.endHour,
-    );
-    if (active) return { inWindow: true, label: active.label };
-    let next: { label: string; startHour: number; delta: number } | null = null;
-    for (const w of windows) {
-      let delta = w.startHour - hour;
-      if (delta <= 0) delta += 24;
-      if (!next || delta < next.delta) next = { label: w.label, startHour: w.startHour, delta };
-    }
-    return next
-      ? { inWindow: false, nextLabel: next.label, nextStartsAt: formatHour(next.startHour) }
-      : { inWindow: false };
-  }
-
   interface BrainReply {
     say: string;
     done: boolean;
@@ -577,6 +539,12 @@ export default function TalkClient() {
     // the declared-window state all the way through the conversation.
     const now = new Date();
     const hour = now.getHours();
+    // The place label: a saved place's name (or "away") when the
+    // user has saved places and permission is already granted on
+    // this device — otherwise null and the field is omitted, so a
+    // user with no places gets exactly the old request. Only the
+    // label travels; coordinates never leave the device.
+    const placeLabel = await getPlaceLabel().catch(() => null);
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
@@ -590,7 +558,8 @@ export default function TalkClient() {
           driving: answersRef.current.driving,
           localTime: { hour, partOfDay: partOfDayFor(hour) },
           dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
-          riskWindow: computeRiskWindow(plan, now),
+          riskWindow: computeRiskWindowState(plan, now),
+          ...(placeLabel ? { placeLabel } : {}),
           todayJournal: todayRef.current,
           sessionOutcomes: sessionOutcomesRef.current,
           event: pendingEventRef.current,

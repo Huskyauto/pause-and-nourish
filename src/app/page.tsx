@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CheckInCount from "@/components/CheckInCount";
-import { getUserProfile, hasUserProfile } from "@/lib/journal";
+import { getShieldPlan, getUserProfile, hasUserProfile } from "@/lib/journal";
+import { activeRiskWindow } from "@/lib/riskWindows";
 
 // Voice-first home (Oct 29 revamp, Bob's direction after using the app;
 // cue card retired 2026-10-31 under the all-canned-out ruling): home
@@ -37,11 +38,22 @@ function SecondaryLinks() {
   );
 }
 
+interface WindowCard {
+  label: string;
+  whyLine: string;
+  insteads: string[];
+}
+
 export default function Home() {
   // The story intake's first-run state: no profile saved → home
   // surfaces "Start with your story". It never gates anything — SOS
   // and Talk with me work with zero intake, profile or not.
   const [hasProfile, setHasProfile] = useState(false);
+  // Day 4 §2.3 surfacing: inside a declared risk window, home brings
+  // the user's own plan forward — their why line and what they'll
+  // have instead, in their words — alongside the SOS/Talk entries.
+  // Outside a window (or with nothing declared) home is unchanged.
+  const [windowCard, setWindowCard] = useState<WindowCard | null>(null);
 
   // Load the story-intake state (a saved name = the intake has run).
   useEffect(() => {
@@ -53,6 +65,42 @@ export default function Home() {
       .catch(() => {});
     return () => {
       live = false;
+    };
+  }, []);
+
+  // The window check runs on mount and whenever home becomes
+  // visible again — a window that opens while the app sits in a
+  // pocket still surfaces the plan when the user comes back to it.
+  useEffect(() => {
+    let live = true;
+    async function check() {
+      try {
+        const plan = await getShieldPlan();
+        if (!live) return;
+        const active = activeRiskWindow(plan, new Date());
+        if (!active) {
+          setWindowCard(null);
+          return;
+        }
+        const insteads = plan.triggerOptions
+          .flatMap((t) => t.options)
+          .map((o) => o.trim())
+          .filter(Boolean)
+          .slice(0, 3);
+        const whyLine = plan.whyLine.trim();
+        setWindowCard(whyLine || insteads.length ? { label: active.label, whyLine, insteads } : null);
+      } catch {
+        if (live) setWindowCard(null);
+      }
+    }
+    void check();
+    function onVisible() {
+      if (document.visibilityState === "visible") void check();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      live = false;
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -70,7 +118,36 @@ export default function Home() {
         </p>
       </header>
 
-      <section className="mt-10 rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-6 text-center">
+      {windowCard && (
+        <section className="mt-10 rounded-2xl border-2 border-[#2f5d3a]/40 bg-[#f2f6ef] p-6 text-center">
+          <p className="text-sm font-semibold tracking-wide text-[#2f5d3a] uppercase">
+            {windowCard.label
+              ? `Inside your window — ${windowCard.label}`
+              : "Inside a window you declared"}
+          </p>
+          {windowCard.whyLine && (
+            <p className="mx-auto mt-3 max-w-md text-2xl leading-snug font-bold text-stone-900">
+              &ldquo;{windowCard.whyLine}&rdquo;
+            </p>
+          )}
+          {windowCard.insteads.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-semibold text-stone-900">What you&apos;ll have instead</p>
+              <ul className="mx-auto mt-1 max-w-md text-base leading-relaxed text-stone-700">
+                {windowCard.insteads.map((option, i) => (
+                  <li key={i}>• {option}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-stone-600">
+            Your plan, in your words — brought forward because this is one of the times you
+            named at calm time.
+          </p>
+        </section>
+      )}
+
+      <section className={`${windowCard ? "mt-6" : "mt-10"} rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-6 text-center`}>
         <p className="font-semibold text-stone-900">Already in it?</p>
         <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
           Skip the form. Go straight to the pause — it opens in your own voice, composed

@@ -10,6 +10,7 @@ import {
   IfThenSection,
   VoiceChoiceSection,
 } from "./ShieldDay4";
+import { PlacesSection, RiskWindowsSection } from "./PlacesWindows";
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white p-3 text-stone-900 focus:border-[#2f5d3a] focus:outline-none";
@@ -278,6 +279,16 @@ export default function ShieldPage() {
             Add
           </button>
         </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">Your places — saved by standing there</h2>
+        <PlacesSection />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold text-stone-900">My risk windows</h2>
+        <RiskWindowsSection plan={plan} onUpdate={update} />
       </section>
 
       <section className="mt-10">
