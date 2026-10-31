@@ -62,6 +62,12 @@ export interface ModalityDef {
   // Seed entries backed by a shipped pause tool: steps materialize
   // from the tool's script instead of the literal `steps` array.
   toolId?: string;
+  // Placement gate (catalog ruling): "calm" entries are calm-time,
+  // for-later items. They stay in the registry data, but the converse
+  // prompt excludes them from the offerable repertoire and the route
+  // strips the kind if one is ever returned — in the moment is
+  // conversation + led moves only. Absent means "moment".
+  placement?: "moment" | "calm";
   source: string;
 }
 
@@ -290,6 +296,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "id": "room-setup",
     "name": "Set up the room",
     "situations": ["calm time only — offered after a conversation ends, as a for-later action item", "a repeated place trigger", "trigger food in the house"],
+    "placement": "calm",
     "steps": [{ "say": "One calm-time rep to consider: move the thing that keeps showing up in your moments out of sight — high shelf, or out of the house. Want it on your list?", "seconds": 10 }],
     "source": "Lisa layer (internal only — never surfaced in app copy): environment over willpower, reduce friction at calm time — ADAPTED: a post-conversation action item from his own words, never an in-the-moment lead",
   },
@@ -325,6 +332,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "id": "one-thank-you",
     "name": "Send one thank-you",
     "situations": ["lonely", "calm time only — offered after a conversation ends, as a for-later action item"],
+    "placement": "calm",
     "steps": [{ "say": "One for-later rep: send one short thank-you to somebody who's earned it — a text is plenty. Want it on your list?", "seconds": 10 }],
     "source": "AI-BUDDY self_care.py (Gratitude Message, fetched from the GitHub backup in v1.1) — ADAPTED: a for-later action item after the conversation (his locked interaction model), never an in-the-moment lead; benefit claims stripped",
   },
@@ -339,7 +347,7 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "id": "one-word",
     "name": "One word for today",
     "situations": ["morning arming", "calm time only — a setup rep, never an in-the-moment lead"],
-    "steps": [{ "say": "One word for today — the word you want steering. Say it out loud.", "seconds": 15 }, { "say": "Locked in. That word rides the day, and I'll speak it back when a moment needs it.", "seconds": 5 }],
+    "steps": [{ "say": "One word for today — the word you want steering. Say it out loud.", "seconds": 15 }, { "say": "{word} — locked in. That word rides the day, and I'll speak it back when a moment needs it.", "seconds": 5 }],
     "source": "AI-BUDDY self_care.py (Intention Setting, fetched from the GitHub backup in v1.1) — ADAPTED: a calm-time morning arming rep; the word he declares becomes a spoken fill the brain can deal back, like his why line",
   },
 ];
@@ -348,6 +356,13 @@ export type GuidedActionKind = string;
 
 export function modalityById(id: string): ModalityDef | null {
   return MODALITY_REPERTOIRE.find((m) => m.id === id) ?? null;
+}
+
+// Where an entry may surface: "moment" (offerable as an in-the-moment
+// guided action) or "calm" (calm-time, for-later only). Absent field
+// means "moment" — only the catalog's calm-time rulings carry "calm".
+export function modalityPlacement(id: string): "moment" | "calm" {
+  return modalityById(id)?.placement ?? "moment";
 }
 
 export function isGuidedActionKind(value: unknown): value is GuidedActionKind {
@@ -385,6 +400,10 @@ export interface ActionContext {
   placeText: string | null;
   // The need he just declared, as a spoken phrase — fills `{need}`.
   needText: string | null;
+  // The word he declared for today (the one-word arming), verbatim —
+  // fills `{word}` so a later run speaks his word back to him, the
+  // way `{why}` speaks his why line. Null when no word is set today.
+  wordText: string | null;
 }
 
 // His declared needs as spoken phrases, for the `{need}` fill — the
@@ -443,6 +462,7 @@ function fillTemplate(text: string, ctx: ActionContext, pass: number): string {
     .replaceAll("{replacement}", ctx.replacementText ?? "")
     .replaceAll("{place}", ctx.placeText ?? "")
     .replaceAll("{need}", ctx.needText ?? "")
+    .replaceAll("{word}", ctx.wordText ?? "")
     .replaceAll("{ordinal}", ORDINALS[pass] ?? String(pass + 1))
     .replaceAll("{n}", String(pass + 1))
     .replace(/\s+/g, " ")

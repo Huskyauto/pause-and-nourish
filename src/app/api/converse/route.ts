@@ -36,6 +36,7 @@ import {
   SITUATION_RANKING,
   actionLabel,
   isGuidedActionKind,
+  modalityPlacement,
   type ConverseEvent,
   type GuidedActionKind,
   type SessionOutcomeItem,
@@ -136,7 +137,12 @@ Respond with ONLY a JSON object, no other text: {"say": "<the exact line to spea
 // by a plain "how does the urge sit now" — his declared number, the
 // same as the pause flow.
 function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean): string {
-  const entries = MODALITY_REPERTOIRE.map((m) => {
+  // Placement gate: calm-time entries (placement "calm" — the
+  // for-later items) are NOT part of the offerable repertoire. They
+  // never appear in this block, and validation below strips the kind
+  // if one is returned anyway. In the moment is conversation + led
+  // moves only; for-later items surface after the session, not in it.
+  const entries = MODALITY_REPERTOIRE.filter((m) => m.placement !== "calm").map((m) => {
     const fits = m.situations.join("; ");
     let note = "";
     if (m.id === "swap" && !hasSwap) {
@@ -148,9 +154,15 @@ function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean): string {
     return `- "${m.id}" (${m.name}): fits ${fits}${note}`;
   }).join("\n");
   const rankings = SITUATION_RANKING.map((r) => {
-    const moves = r.moves.map((id) => `"${id}"`).join(" → ");
+    // Calm-time moves are stripped from the rankings too — a ranking
+    // must never point the model at an action it may not propose.
+    const momentMoves = r.moves.filter((id) => modalityPlacement(id) === "moment");
+    if (!momentMoves.length) return null;
+    const moves = momentMoves.map((id) => `"${id}"`).join(" → ");
     return `- ${r.situation}: ${moves}${r.note ? ` (${r.note})` : ""}`;
-  }).join("\n");
+  })
+    .filter((line): line is string => line !== null)
+    .join("\n");
   return `GUIDED ACTIONS — WHEN TALK HAS FOUND THE MOMENT, LEAD ONE:
 
 Once you have learned the shape of this moment — where he is, whether it's body hunger or the urge, how strong it is, what he needs — you may propose ONE guided action and, if he says yes, the app leads it step by step in voice. The proposal line is spoken, one or two short sentences, ending as a genuine question he can say no to: "Why don't we start with five deep breaths?" is the shape. A pass is a complete answer — if he says no or not now, let it go entirely: no persuasion, no second offer of the same action this conversation, and the conversation simply continues. If he asks for an action himself, proposing that one is always right (when it's on the list and fits the hour).
@@ -621,6 +633,7 @@ export async function POST(request: Request) {
             const rawKind = (parsed.action as { kind?: unknown } | null)?.kind;
             if (
               isGuidedActionKind(rawKind) &&
+              modalityPlacement(rawKind) === "moment" &&
               (rawKind !== "swap" || hasSwap) &&
               (rawKind !== "replacement-line" || hasReplacement)
             ) {

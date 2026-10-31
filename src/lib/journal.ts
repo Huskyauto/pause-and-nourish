@@ -81,6 +81,13 @@ export interface ShieldPlan {
   dangerPlaces: string[];
   thoughtPairs: { negative: string; positive: string }[];
   whyLine: string; // the user's own "why", shown large on the SOS screen
+  // One-word arming (repertoire "one-word" entry): the word he
+  // declared for today, spoken back by that action's {word} fill,
+  // and the device-local date string (Date#toDateString) of the day
+  // he declared it — a word from an earlier day is not today's word.
+  // Optional: plans that never ran the action simply lack them.
+  todayWord?: string | null;
+  todayWordDate?: string | null;
   // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
   ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
   voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later

@@ -10,6 +10,7 @@ import {
   getShieldPlan,
   hasCue,
   listEntries,
+  saveShieldPlan,
   updateEntry,
   type CueKind,
   type JournalEntry,
@@ -1088,6 +1089,11 @@ export default function TalkClient() {
       replacementText: pair ? pair.positive.trim() : null,
       placeText: answersRef.current.context,
       needText: answersRef.current.need ? (NEED_SPOKEN[answersRef.current.need] ?? null) : null,
+      // His word for today, if he set one today — the closing step
+      // speaks it back via the {word} fill. A word from an earlier
+      // day does not count.
+      wordText:
+        plan.todayWordDate === new Date().toDateString() ? plan.todayWord?.trim() || null : null,
     });
     if (!steps.length) return;
     actionRanRef.current = true;
@@ -1131,8 +1137,51 @@ export default function TalkClient() {
       persistTranscriptNote();
       pendingEventRef.current = { type: "action-completed", kind };
     }
+    if (completed && kind === "one-word") {
+      await captureTodayWord();
+      if (!aliveRef.current) return;
+    }
     // An aborted run writes nothing and tells the brain nothing: the
     // conversation just continues, and the record stays honest.
+  }
+
+  // The one-word capture (placement/catalog follow-on): when a
+  // one-word run completes and he has no word set for today, the app
+  // asks for it directly — "What's your word for today?" — the same
+  // ask-and-capture shape as the closing outcome question, and his
+  // spoken reply is stored verbatim (trimmed) as his todayWord when
+  // it is a word-sized answer (four words at most; anything longer
+  // is a sentence, not a word, and is not stored). A dedicated ask —
+  // rather than reading the word off the next conversation turn —
+  // because the action's own steps never open the mic (the word he
+  // says into the opening step's quiet is not recorded), and the
+  // first turn after a run answers the brain's follow-up line, so
+  // taking his word from it would mis-attribute that reply. The
+  // stored word rides the plan and fills {word} on later runs.
+  async function captureTodayWord(): Promise<void> {
+    const plan = planRef.current;
+    if (!plan) return;
+    const todayStr = new Date().toDateString();
+    if (plan.todayWord?.trim() && plan.todayWordDate === todayStr) return;
+    const ask = "What's your word for today?";
+    setCurrentLine(ask);
+    setStatus("");
+    historyRef.current.push({ role: "brain", text: ask });
+    persistTranscriptNote();
+    await speakAloud(ask);
+    if (!aliveRef.current) return;
+    const raw = await captureAnswerText();
+    if (!aliveRef.current || !raw) return;
+    ingestAnswer(raw);
+    const word = raw.trim().replace(/\s+/g, " ");
+    if (!word || word.split(" ").length > 4) return;
+    const updated: ShieldPlan = {
+      ...(planRef.current ?? plan),
+      todayWord: word,
+      todayWordDate: todayStr,
+    };
+    planRef.current = updated;
+    await saveShieldPlan(updated).catch(() => {});
   }
 
   // The free-form conversation loop: brain speaks (Fish-first), user
