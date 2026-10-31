@@ -12,6 +12,7 @@ import {
 } from "@/lib/journal";
 import { speakLineChecked } from "@/lib/speak";
 import { transcribeBlob } from "@/lib/wav";
+import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 
 // "Your story" as a conversation (Bob's ruling, 2026-10-31): the
 // brain asks one question at a time out loud, the user answers out
@@ -90,6 +91,38 @@ export default function InterviewClient() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [voice, setVoice] = useState<ProfileVoice>("female");
   const [captured, setCaptured] = useState<Captured | null>(null);
+  // The Friendly Brain mascot (2026-10-31): thinking while a
+  // question (or a transcription) is in flight, a ready spark-flash
+  // when the brain's next line lands, listening while they answer.
+  const [brainState, setBrainState] = useState<SecondBrainState>("idle");
+  const brainReadyTimerRef = useRef<number | null>(null);
+
+  function brainThink() {
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+      brainReadyTimerRef.current = null;
+    }
+    setBrainState("thinking");
+  }
+
+  function brainReady() {
+    setBrainState("ready");
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+    }
+    brainReadyTimerRef.current = window.setTimeout(() => {
+      brainReadyTimerRef.current = null;
+      setBrainState("idle");
+    }, 900);
+  }
+
+  function brainIdle() {
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+      brainReadyTimerRef.current = null;
+    }
+    setBrainState("idle");
+  }
 
   const historyRef = useRef<Turn[]>([]);
   const voiceRef = useRef<ProfileVoice>("female");
@@ -101,6 +134,10 @@ export default function InterviewClient() {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      if (brainReadyTimerRef.current !== null) {
+        window.clearTimeout(brainReadyTimerRef.current);
+        brainReadyTimerRef.current = null;
+      }
       stopRef.current?.();
     };
   }, []);
@@ -210,6 +247,7 @@ export default function InterviewClient() {
       }
     }
     await saveShieldPlan(plan).catch(() => {});
+    brainIdle();
     setCaptured(done);
     setPhase("done");
     setStatus("");
@@ -218,20 +256,24 @@ export default function InterviewClient() {
   async function listen(): Promise<void> {
     if (!aliveRef.current) return;
     setPhase("listening");
+    setBrainState("listening");
     setStatus("Listening — I'll send it when you finish talking. Tap Done to send it right away.");
     const blob = await recordAnswerAudio();
     if (!aliveRef.current) return;
     if (!blob) {
       setPhase("busy");
+      brainIdle();
       setStatus("I didn't catch that. Tap Answer and say it again.");
       busyRef.current = false;
       return;
     }
     setPhase("busy");
     setStatus("One moment…");
+    brainThink();
     const text = await transcribeBlob(blob);
     if (!aliveRef.current) return;
     if (!text) {
+      brainIdle();
       setStatus("I didn't catch that. Tap Answer and say it again.");
       busyRef.current = false;
       return;
@@ -246,6 +288,7 @@ export default function InterviewClient() {
     busyRef.current = true;
     setPhase("busy");
     setStatus("One moment…");
+    brainThink();
     let data: IntakeResponse | null = null;
     try {
       const res = await fetch("/api/converse", {
@@ -261,6 +304,7 @@ export default function InterviewClient() {
     if (!data || typeof data.say !== "string" || !data.say.trim()) {
       // Honest unavailability — no fabricated interview line, ever.
       busyRef.current = false;
+      brainIdle();
       setPhase("unavailable");
       setStatus("");
       return;
@@ -273,6 +317,7 @@ export default function InterviewClient() {
     historyRef.current = [...historyRef.current, { role: "brain", text: say }];
     setTurns(historyRef.current);
     setStatus("");
+    brainReady();
     await speak(say);
     if (!aliveRef.current) return;
     if (data.done === true && data.captured && typeof data.captured === "object") {
@@ -302,6 +347,11 @@ export default function InterviewClient() {
 
   return (
     <div className="mt-8">
+      {(phase === "busy" || phase === "listening") && (
+        <div className="mb-4 flex justify-center">
+          <SecondBrain state={brainState} />
+        </div>
+      )}
       {turns.length > 0 && (
         <div className="space-y-3">
           {turns.map((turn, i) => (

@@ -19,6 +19,7 @@ import {
 } from "@/lib/journal";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
 import { speakLine } from "@/lib/speak";
+import SecondBrain from "@/components/SecondBrain";
 
 // Day 3 pause flow, voice-first:
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
@@ -137,6 +138,11 @@ export default function PauseClient() {
   const planRef = useRef<ShieldPlan | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
   const sosLineRef = useRef(false);
+  // The Friendly Brain mascot shows, in its thinking state, only
+  // while the SOS opening line is actually being composed — the
+  // moment the generation request is in flight — and is gone the
+  // moment it resolves, spoken or silent.
+  const [sosThinking, setSosThinking] = useState(false);
   const [exitKind, setExitKind] = useState<"not-me" | "good">("good");
 
   // Runner
@@ -371,7 +377,9 @@ export default function PauseClient() {
       // sessionStorage unavailable — the ref guard still holds this mount.
     }
     void (async () => {
+      setSosThinking(true);
       const line = await fetchMomentLine("sos", null);
+      setSosThinking(false);
       if (line) await speakLine(line, momentVoice());
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -573,6 +581,11 @@ export default function PauseClient() {
             aria-hidden="true"
             className="h-3 w-3 animate-pulse rounded-full bg-[#9a3b26]/50"
           />
+          {sosThinking && (
+            <div className="mt-5">
+              <SecondBrain state="thinking" size={96} />
+            </div>
+          )}
           <p className="mt-8 max-w-lg text-3xl font-bold leading-snug text-stone-900">
             {whyLine.trim() || "I want to feel good tomorrow morning."}
           </p>

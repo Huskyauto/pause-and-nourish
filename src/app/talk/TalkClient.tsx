@@ -35,6 +35,7 @@ import {
   type TalkAnswers,
 } from "@/lib/spine";
 import { speakLineChecked } from "@/lib/speak";
+import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
 import {
   NEED_SPOKEN,
   OUTCOME_QUESTION,
@@ -277,6 +278,43 @@ export default function TalkClient() {
   // shows its name and the "End exercise" escape.
   const [actionRunning, setActionRunning] = useState(false);
   const [runningActionLabel, setRunningActionLabel] = useState("");
+  // The Friendly Brain mascot (2026-10-31): its state mirrors what
+  // the brain is doing this second — thinking while a reply (or a
+  // transcription) is in flight, a ready spark-flash the moment a
+  // reply lands, listening while the user answers, idle otherwise.
+  const [brainState, setBrainState] = useState<SecondBrainState>("idle");
+  const brainReadyTimerRef = useRef<number | null>(null);
+
+  function brainThink() {
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+      brainReadyTimerRef.current = null;
+    }
+    setBrainState("thinking");
+  }
+
+  function brainReady() {
+    setBrainState("ready");
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+    }
+    brainReadyTimerRef.current = window.setTimeout(() => {
+      brainReadyTimerRef.current = null;
+      setBrainState("idle");
+    }, 900);
+  }
+
+  function brainListen() {
+    setBrainState("listening");
+  }
+
+  function brainIdle() {
+    if (brainReadyTimerRef.current !== null) {
+      window.clearTimeout(brainReadyTimerRef.current);
+      brainReadyTimerRef.current = null;
+    }
+    setBrainState("idle");
+  }
 
   const aliveRef = useRef(true);
   const entryRef = useRef<JournalEntry | null>(null);
@@ -325,6 +363,10 @@ export default function TalkClient() {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      if (brainReadyTimerRef.current !== null) {
+        window.clearTimeout(brainReadyTimerRef.current);
+        brainReadyTimerRef.current = null;
+      }
       try {
         window.speechSynthesis?.cancel();
       } catch {
@@ -659,8 +701,10 @@ export default function TalkClient() {
   // line speaks, and nothing is captured further either way.
   async function drivingClose(): Promise<void> {
     sessionOverRef.current = true;
+    brainThink();
     const res = await converseTurn();
     if (res && res !== "not-configured" && res !== "unavailable") {
+      brainReady();
       setCurrentLine(res.say);
       historyRef.current.push({ role: "brain", text: res.say });
       persistTranscriptNote();
@@ -680,6 +724,7 @@ export default function TalkClient() {
   // them, and the pause tools are one tap away.
   async function showUnavailable(): Promise<void> {
     sessionOverRef.current = true;
+    brainIdle();
     const plan = planRef.current;
     if (plan) setPlanElements(assemblePlan(answersRef.current, plan));
     setStatus("");
@@ -844,6 +889,7 @@ export default function TalkClient() {
   // One spoken answer, end to end. Returns the transcript (or null when
   // nothing usable was heard — the caller re-asks once, then moves on).
   async function captureAnswerText(): Promise<string | null> {
+    brainListen();
     if (capturePathRef.current === "sr") {
       setCaptureMode("sr");
       setStatus("Listening — just talk.");
@@ -862,6 +908,7 @@ export default function TalkClient() {
     setCaptureMode("idle");
     if (!blob) return null;
     setStatus("One moment…");
+    brainThink();
     // Meta's ASR endpoint takes mono PCM WAV only — convert first.
     const wav = await blobToWav(blob);
     if (!wav) return null;
@@ -902,6 +949,7 @@ export default function TalkClient() {
   async function begin() {
     setPhase("conversing");
     setStatus("One moment…");
+    brainThink();
     try {
       const stored = await getShieldPlan();
       const { plan } = applyDueDirectness(stored);
@@ -1081,12 +1129,14 @@ export default function TalkClient() {
   async function runFreeform() {
     freeformRef.current = true;
     for (let turn = 0; turn < 14; turn++) {
+      brainThink();
       const res = await converseTurn();
       if (!aliveRef.current) return;
       if (res === "not-configured" || res === "unavailable" || res === null) {
         await showUnavailable();
         return;
       }
+      brainReady();
       setCurrentLine(res.say);
       setStatus("");
       historyRef.current.push({ role: "brain", text: res.say });
@@ -1123,6 +1173,7 @@ export default function TalkClient() {
         // passed, so it never re-offers it).
         const verdict = parseActionResponse(raw);
         if (verdict === "accept") {
+          brainIdle();
           await runGuidedAction(res.action);
           if (!aliveRef.current || sessionOverRef.current) return;
         } else {
@@ -1384,6 +1435,9 @@ export default function TalkClient() {
   return (
     <div className="mt-10">
       <section className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
+        <div className="mb-3 flex justify-center">
+          <SecondBrain state={brainState} />
+        </div>
         <p className="text-2xl font-semibold leading-snug text-stone-900" aria-live="polite">
           {currentLine || "…"}
         </p>
