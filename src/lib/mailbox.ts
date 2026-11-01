@@ -190,7 +190,11 @@ export function __resetMailboxForTests(): void {
 }
 
 async function loadState(): Promise<CompanionState> {
-  await syncFromKv();
+  // No KV sync here on purpose: exported entry points sync ONCE at
+  // the top, before any mutation. A mid-flow load (postOwnerEvent
+  // reads back what arming just recorded) must see THIS request's
+  // own writes — a sync here would clobber them with the
+  // not-yet-persisted blob.
   const m = core();
   return (await m.store.load()) ?? structuredClone(EMPTY_STATE);
 }
@@ -225,7 +229,6 @@ function publicCredential(credential: CredentialRecord) {
 }
 
 async function requireOwner(ownerKey: unknown): Promise<void> {
-  await syncFromKv();
   const m = core();
   if (!m.ownerDigest || typeof ownerKey !== "string" || ownerKey.length === 0) {
     throw new CompanionError("invalid_owner", "That owner key is not recognized.");
@@ -280,12 +283,22 @@ export async function registerPairing(
   ) {
     throw new CompanionError("invalid_request", "That pairing registration is not well-formed.");
   }
+  await syncFromKv();
   const expiryMs = Date.parse(expiresAt);
   if (!Number.isFinite(expiryMs) || expiryMs <= now.getTime() || expiryMs > now.getTime() + 31 * 60 * 1000) {
     throw new CompanionError("invalid_request", "That pairing expiry is out of range.");
   }
   const m = core();
   const state = await loadState();
+  // A fresh ceremony supersedes the previous identity outright:
+  // credential, session, and event log from an earlier pairing do
+  // not carry into a new one. (Without this, a completed test
+  // ceremony's credential lingered in the state and the owner's
+  // panel reported "paired" throughout the next ceremony.)
+  state.credential = null;
+  state.session = { armed: false, armedAt: null, expiresAt: null };
+  state.events = [];
+  state.lastEvent = null;
   state.pendingPairing = {
     pairingId,
     secretDigest,
@@ -305,6 +318,7 @@ export async function registerPairing(
 }
 
 export async function approveRegisteredPairing(ownerKey: unknown): Promise<{ approved: true }> {
+  await syncFromKv();
   await requireOwner(ownerKey);
   await approvePairing(core().store);
   await persist();
@@ -312,6 +326,7 @@ export async function approveRegisteredPairing(ownerKey: unknown): Promise<{ app
 }
 
 export async function denyRegisteredPairing(ownerKey: unknown): Promise<{ denied: true }> {
+  await syncFromKv();
   await requireOwner(ownerKey);
   await denyPairing(core().store);
   await persist();
@@ -325,6 +340,7 @@ export async function pollPairing(
   secret: string | null,
   now: Date = new Date(),
 ): Promise<{ status: "waiting" | "approved" | "expired" }> {
+  await syncFromKv();
   const state = await loadState();
   const pending = state.pendingPairing;
   if (!pending || pending.pairingId !== pairingId || !secret) throw new PairingNotFoundError();
@@ -339,6 +355,7 @@ export async function exchangeRegisteredPairing(
   presented: { secret: unknown; code: unknown },
   now: Date = new Date(),
 ): Promise<{ rawToken: string; credential: ReturnType<typeof publicCredential> }> {
+  await syncFromKv();
   const state = await loadState();
   if (!state.pendingPairing || state.pendingPairing.pairingId !== pairingId) {
     throw new PairingNotFoundError();
@@ -411,6 +428,7 @@ export async function renewCompanionCredential(
   presentedToken: unknown,
   now: Date = new Date(),
 ): Promise<{ rawToken: string; credential: ReturnType<typeof publicCredential> }> {
+  await syncFromKv();
   if (typeof presentedToken !== "string" || !presentedToken) throw new UnknownTokenError();
   const state = await loadState();
   const credential = state.credential;
@@ -434,6 +452,7 @@ export async function postOwnerEvent(
   input: { type: unknown; payload?: unknown; durationMs?: unknown },
   now: Date = new Date(),
 ): Promise<{ accepted: true; event: FeedEntry }> {
+  await syncFromKv();
   await requireOwner(ownerKey);
   const m = core();
   if (typeof input.type !== "string" || !(OWNER_EVENT_TYPES as readonly string[]).includes(input.type)) {
@@ -482,11 +501,13 @@ export async function readOwnerEvents(
   ownerKey: unknown,
   after: string | null,
 ): Promise<{ events: FeedEntry[] }> {
+  await syncFromKv();
   await requireOwner(ownerKey);
   return { events: feedAfter(after) };
 }
 
 export async function ownerMailboxStatus(ownerKey: unknown, now: Date = new Date()) {
+  await syncFromKv();
   await requireOwner(ownerKey);
   const m = core();
   const state = await loadState();
