@@ -13,12 +13,20 @@
 // pure reads.
 //
 // State lives in a module singleton (globalThis) on the server
-// instance: pairings live 15 minutes, events are in-flight notes.
-// That is the spec's storage model ("stored in-flight only"); a warm
-// instance serves a whole pairing + session, and the companion's
-// polling keeps it warm. A cold start loses in-flight state — the
-// honest consequence is that a pairing interrupted by one is simply
-// started over; nothing durable exists to corrupt.
+// instance, backed — when a Vercel KV (Upstash) store is connected
+// via KV_REST_API_URL / KV_REST_API_TOKEN (or the UPSTASH_REDIS_REST_*
+// pair) — by a single durable blob in that store. The in-memory copy
+// is a per-instance cache; every read syncs from KV and every
+// mutation persists back, so a pairing survives cold instances,
+// deploys, and the gaps between a real client's polls. Without KV
+// the old in-flight-only behavior remains as a fallback: pairings
+// live 15 minutes, events are in-flight notes, and a cold start
+// loses them — a pairing interrupted by one is simply started over.
+// (Added 2026-11-01 after the first live gate run showed one warm
+// instance passing every synthetic test while the real phone's
+// requests kept landing on instances that had never seen its
+// registration: in-memory state alone was too fragile to pair two
+// real clients.)
 //
 // Owner auth: when the PWA registers a pairing it also registers the
 // digest of an owner key it generates and keeps on the device. Owner
@@ -35,7 +43,6 @@ import {
   UnknownTokenError,
   approvePairing,
   armLocalSession,
-  createMemoryStore,
   credentialStatus,
   denyPairing,
   digestsEqual,
@@ -71,12 +78,59 @@ interface MailboxCore {
   pairingId: string | null;
 }
 
+/** The whole mailbox as one durable blob (KV value). */
+interface MailboxBlob {
+  state: CompanionState;
+  feed: FeedEntry[];
+  seq: number;
+  ownerDigest: string | null;
+  pairingId: string | null;
+}
+
+const KV_KEY = "pn_mailbox_v1";
+
+function kvConfig(): { url: string; token: string } | null {
+  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
+/** Whether the durable store is connected (surfaced on register). */
+export function mailboxStoreKind(): "kv" | "memory" {
+  return kvConfig() ? "kv" : "memory";
+}
+
+async function kvCommand(command: string[]): Promise<unknown> {
+  const kv = kvConfig();
+  if (!kv) return null;
+  const res = await fetch(kv.url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${kv.token}`, "content-type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  if (!res.ok) throw new Error(`mailbox KV answered ${res.status}`);
+  const parsed = (await res.json()) as { result?: unknown };
+  return parsed.result ?? null;
+}
+
 const globalSlot = globalThis as unknown as { __pnMailbox?: MailboxCore };
 
 function core(): MailboxCore {
   if (!globalSlot.__pnMailbox) {
+    // A minimal in-module store: load returns the cached state,
+    // save replaces it. KV sync/persist wraps around it.
+    let current: CompanionState | null = null;
+    const store: CompanionStore = {
+      load: async () => current,
+      save: async (state: CompanionState) => {
+        current = state;
+      },
+      clear: async () => {
+        current = null;
+      },
+    };
     globalSlot.__pnMailbox = {
-      store: createMemoryStore(),
+      store,
       feed: [],
       seq: 0,
       ownerDigest: null,
@@ -86,6 +140,44 @@ function core(): MailboxCore {
   return globalSlot.__pnMailbox;
 }
 
+/** Pull the durable blob into this instance's cache (no-op sans KV). */
+async function syncFromKv(): Promise<void> {
+  if (!kvConfig()) return;
+  try {
+    const raw = await kvCommand(["GET", KV_KEY]);
+    if (typeof raw !== "string" || !raw) return;
+    const blob = JSON.parse(raw) as MailboxBlob;
+    const m = core();
+    await m.store.save(blob.state);
+    m.feed = blob.feed ?? [];
+    m.seq = blob.seq ?? 0;
+    m.ownerDigest = blob.ownerDigest ?? null;
+    m.pairingId = blob.pairingId ?? null;
+  } catch {
+    // A KV hiccup must not take the mailbox down with it: serve
+    // from this instance's cache and let the next call retry.
+  }
+}
+
+/** Push this instance's whole mailbox to the durable blob. */
+async function persist(): Promise<void> {
+  if (!kvConfig()) return;
+  try {
+    const m = core();
+    const blob: MailboxBlob = {
+      state: (await m.store.load()) ?? structuredClone(EMPTY_STATE),
+      feed: m.feed,
+      seq: m.seq,
+      ownerDigest: m.ownerDigest,
+      pairingId: m.pairingId,
+    };
+    await kvCommand(["SET", KV_KEY, JSON.stringify(blob)]);
+  } catch {
+    // Same reasoning as sync: availability of the ceremony beats
+    // durability of any single write; the next mutation retries.
+  }
+}
+
 /** Test hook: the serialized server state (digest-only evidence). */
 export async function __mailboxStateForTests(): Promise<CompanionState> {
   return loadState();
@@ -93,16 +185,12 @@ export async function __mailboxStateForTests(): Promise<CompanionState> {
 
 /** Test hook: reset the whole mailbox to a fresh state. */
 export function __resetMailboxForTests(): void {
-  globalSlot.__pnMailbox = {
-    store: createMemoryStore(),
-    feed: [],
-    seq: 0,
-    ownerDigest: null,
-    pairingId: null,
-  };
+  delete globalSlot.__pnMailbox;
+  core();
 }
 
 async function loadState(): Promise<CompanionState> {
+  await syncFromKv();
   const m = core();
   return (await m.store.load()) ?? structuredClone(EMPTY_STATE);
 }
@@ -137,6 +225,7 @@ function publicCredential(credential: CredentialRecord) {
 }
 
 async function requireOwner(ownerKey: unknown): Promise<void> {
+  await syncFromKv();
   const m = core();
   if (!m.ownerDigest || typeof ownerKey !== "string" || ownerKey.length === 0) {
     throw new CompanionError("invalid_owner", "That owner key is not recognized.");
@@ -172,7 +261,7 @@ export interface RegisterPairingInput {
 export async function registerPairing(
   input: RegisterPairingInput,
   now: Date = new Date(),
-): Promise<{ registered: true; pairingId: string }> {
+): Promise<{ registered: true; pairingId: string; store: "kv" | "memory" }> {
   const { pairingId, secretDigest, codeDigest, requestedScopes, expiresAt, ownerDigest } = input;
   if (
     typeof pairingId !== "string" ||
@@ -211,18 +300,21 @@ export async function registerPairing(
   m.seq = 0;
   m.ownerDigest = ownerDigest;
   m.pairingId = pairingId;
-  return { registered: true, pairingId };
+  await persist();
+  return { registered: true, pairingId, store: mailboxStoreKind() };
 }
 
 export async function approveRegisteredPairing(ownerKey: unknown): Promise<{ approved: true }> {
   await requireOwner(ownerKey);
   await approvePairing(core().store);
+  await persist();
   return { approved: true };
 }
 
 export async function denyRegisteredPairing(ownerKey: unknown): Promise<{ denied: true }> {
   await requireOwner(ownerKey);
   await denyPairing(core().store);
+  await persist();
   return { denied: true };
 }
 
@@ -259,6 +351,7 @@ export async function exchangeRegisteredPairing(
     { pairingSecret: presented.secret, exchangeCode: presented.code },
     now,
   );
+  await persist();
   return { rawToken: issued.rawToken, credential: publicCredential(issued.credential) };
 }
 
@@ -270,6 +363,7 @@ export async function pushCompanionEvent(
   now: Date = new Date(),
 ): Promise<{ accepted: true }> {
   const token = bearerToken(authorization);
+  await syncFromKv();
   const checked = await pushEvent(core().store, token, event, now);
   appendFeed(checked);
   // Keep the shared session state in step with what the companion
@@ -283,6 +377,7 @@ export async function pushCompanionEvent(
     // Session sync is best-effort beside an accepted event; the
     // event itself is already recorded.
   }
+  await persist();
   return { accepted: true };
 }
 
@@ -291,12 +386,14 @@ export async function readCompanionEvents(
   after: string | null,
 ): Promise<{ events: FeedEntry[] }> {
   const token = bearerToken(authorization);
+  await syncFromKv();
   await verifyToken(core().store, token, "status:read");
   return { events: feedAfter(after) };
 }
 
 export async function companionMailboxStatus(authorization: string | null) {
   const token = bearerToken(authorization);
+  await syncFromKv();
   const view = await readStatus(core().store, token);
   return {
     paired: view.paired,
@@ -324,6 +421,7 @@ export async function renewCompanionCredential(
   // Expiry is NOT checked here on purpose: renewing an expired
   // credential on the same identity is the anti-cliff rule.
   const issued = await renewCredential(core().store, now);
+  await persist();
   return { rawToken: issued.rawToken, credential: publicCredential(issued.credential) };
 }
 
@@ -354,13 +452,17 @@ export async function postOwnerEvent(
     await armLocalSession(m.store, { durationMs, contextLabel: label || undefined }, now);
     const after = await loadState();
     if (!after.lastEvent) throw new CompanionError("invalid_request", "Arming recorded nothing.");
-    return { accepted: true, event: appendFeed(after.lastEvent) };
+    const entry = appendFeed(after.lastEvent);
+    await persist();
+    return { accepted: true, event: entry };
   }
   if (input.type === "session.stopped") {
     await stopLocalSession(m.store, now);
     const after = await loadState();
     if (!after.lastEvent) throw new CompanionError("invalid_request", "Stopping recorded nothing.");
-    return { accepted: true, event: appendFeed(after.lastEvent) };
+    const entry = appendFeed(after.lastEvent);
+    await persist();
+    return { accepted: true, event: entry };
   }
   // cue.requested — validated by the same events-only guard as
   // everything else on the bridge before it reaches the feed.
@@ -371,7 +473,9 @@ export async function postOwnerEvent(
   fresh.events = [...fresh.events, checked].slice(-50);
   fresh.lastEvent = checked;
   await m.store.save(fresh);
-  return { accepted: true, event: appendFeed(checked) };
+  const entry = appendFeed(checked);
+  await persist();
+  return { accepted: true, event: entry };
 }
 
 export async function readOwnerEvents(
