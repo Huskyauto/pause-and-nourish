@@ -41,6 +41,7 @@
 import { metaApiKey, metaChat, MetaApiError } from "@/lib/meta";
 import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
 import { filterGeneratedLine, type PartOfDay } from "@/lib/spine";
+import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
 import {
   MODALITY_REPERTOIRE,
   SITUATION_RANKING,
@@ -127,7 +128,7 @@ Hard rules:
 - No therapy, diagnosis, treatment, diet, calorie, or weight language. No shame, no guilt, no willpower talk.
 - If the user says they are driving, end the conversation at once: tell them eyes on the road, that you'll talk it through when they're parked, and return done=true with choice=null.
 - Directness for this user: ${DIRECTNESS_LINES[directness]}.
-- Speak as one voice to one person. No lists, no labels, no stage directions, no talk about being an AI or a model.
+- Speak as one voice to one person. No lists, no labels, no stage directions. Never claim to be human: you are their second brain, an AI companion — fine to say plainly if it comes up, never make a speech of it.
 
 Endings: when the user has made (or clearly stated) their choice — eat, have something else instead, or delay — return done=true and choice set to it, and make "say" a warm closing line reflecting their choice. If the user clearly wants to stop without choosing, return done=true and choice=null. Otherwise done=false and choice=null. Aim to reach a natural close within about eight exchanges; do not drag the conversation out.
 
@@ -734,7 +735,7 @@ Hard rules:
 - Eating is always legitimate. Never discourage eating; never frame any choice as good or bad, success or failure.
 - Plain words — hunger, the urge, the urge to eat. Never the word "pull".
 - Never the word "swap" either: if you name what they could do, say it plainly — have something else instead — in words fitted to this moment, not a set phrase.
-- Speak as one voice to one person, ${name}. No lists, no labels, no stage directions, no talk about being an AI or a model.
+- Speak as one voice to one person, ${name}. No lists, no labels, no stage directions. Never claim to be human: you are their second brain, an AI companion — fine to say plainly if it comes up, never make a speech of it.
 - Directness for this user: ${DIRECTNESS_LINES[directness]}.
 - One or two short sentences — this line is spoken aloud in a hard moment.
 
@@ -1196,6 +1197,26 @@ export async function POST(request: Request) {
     }
   } catch {
     // Malformed body falls through to the guards below.
+  }
+
+  // Crisis signpost (deterministic, no model involved): when the
+  // user's newest words carry an explicit crisis statement, the
+  // reply is the fixed signpost — never a composed line — in every
+  // mode. Matching their own stated words is not emotion detection;
+  // see src/lib/crisis.ts (NY GBL §1700 mitigation, Bob 2026-11-01).
+  const lastUserTurn = [...history].reverse().find((turn) => turn.role === "user");
+  if (lastUserTurn && matchesCrisis(lastUserTurn.text)) {
+    if (mode === "intake") {
+      return Response.json({ say: CRISIS_SAY, done: false, captured: null, crisis: true, source: "signpost" });
+    }
+    return Response.json({
+      say: CRISIS_SAY,
+      done: false,
+      choice: null,
+      action: null,
+      crisis: true,
+      source: "signpost",
+    });
   }
 
   // The story-intake interview runs before the plan guard: a new

@@ -1130,6 +1130,14 @@ export default function PauseClient() {
           </p>
         </div>
       )}
+      <p className="mt-8 text-center text-sm leading-relaxed text-stone-500">
+        Your second brain is an AI companion — not a person. If a moment ever feels bigger than a
+        pause,{" "}
+        <Link href="/support" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+          Get support
+        </Link>
+        .
+      </p>
     </div>
   );
 }

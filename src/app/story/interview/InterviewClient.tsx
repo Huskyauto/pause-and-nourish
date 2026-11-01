@@ -65,6 +65,7 @@ interface IntakeResponse {
   done?: unknown;
   voice?: unknown;
   captured?: unknown;
+  crisis?: unknown;
 }
 
 type Phase = "ready" | "busy" | "listening" | "unavailable" | "done";
@@ -95,6 +96,7 @@ export default function InterviewClient() {
   // auto-open, or a miss): the Answer button is the way back in —
   // a deliberate tap, never an automatic retry loop.
   const [awaitingAnswer, setAwaitingAnswer] = useState(false);
+  const [supportShown, setSupportShown] = useState(false);
   // The Friendly Brain mascot (2026-10-31): thinking while a
   // question (or a transcription) is in flight, a ready spark-flash
   // when the brain's next line lands, listening while they answer.
@@ -419,6 +421,7 @@ export default function InterviewClient() {
       voiceRef.current = data.voice;
       setVoice(data.voice);
     }
+    if (data.crisis === true) setSupportShown(true);
     const say = data.say.trim();
     historyRef.current = [...historyRef.current, { role: "brain", text: say }];
     setTurns(historyRef.current);
@@ -454,6 +457,18 @@ export default function InterviewClient() {
 
   return (
     <div className="mt-8">
+      <p className="mb-4 text-center text-sm text-stone-500">
+        Your second brain is an AI companion — not a person. It asks; you answer, in your own
+        words.
+      </p>
+      {supportShown && (
+        <p className="mb-4 rounded-xl bg-[#f4f7f1] px-4 py-3 text-center leading-relaxed text-stone-700">
+          If this feels bigger than a pause, real support is here:{" "}
+          <Link href="/support" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+            Get support — 988 and more
+          </Link>
+        </p>
+      )}
       {(phase === "busy" || phase === "listening") && (
         <div className="mb-4 flex justify-center">
           <SecondBrain state={brainState} />

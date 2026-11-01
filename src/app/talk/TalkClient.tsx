@@ -257,6 +257,7 @@ export default function TalkClient() {
   const router = useRouter();
   const [phase, setPhase] = useState<UiPhase>("ready");
   const [currentLine, setCurrentLine] = useState("");
+  const [supportShown, setSupportShown] = useState(false);
   const [status, setStatus] = useState("");
   const [heard, setHeard] = useState("");
   const [captureMode, setCaptureMode] = useState<CaptureMode>("idle");
@@ -567,6 +568,9 @@ export default function TalkClient() {
     // (validated against the repertoire server-side; re-checked here
     // before anything runs).
     action: GuidedActionKind | null;
+    // True when the reply is the fixed crisis signpost (the route's
+    // deterministic rule fired): the support card renders with it.
+    crisis: boolean;
   }
 
   // One conversational turn: the whole transcript goes up, the brain's
@@ -630,12 +634,13 @@ export default function TalkClient() {
         done?: unknown;
         choice?: unknown;
         action?: unknown;
+        crisis?: unknown;
       };
       if (typeof data.say !== "string" || !data.say.trim()) return null;
       // The turn went through — the lifecycle note was delivered.
       pendingEventRef.current = null;
       const rawKind = (data.action as { kind?: unknown } | null)?.kind;
-      return {
+      const reply: BrainReply = {
         say: data.say,
         done: data.done === true,
         choice:
@@ -643,7 +648,10 @@ export default function TalkClient() {
             ? data.choice
             : null,
         action: isGuidedActionKind(rawKind) ? rawKind : null,
+        crisis: data.crisis === true,
       };
+      if (reply.crisis) setSupportShown(true);
+      return reply;
     } catch {
       return null;
     }
@@ -1543,6 +1551,17 @@ export default function TalkClient() {
         <p className="text-2xl font-semibold leading-snug text-stone-900" aria-live="polite">
           {currentLine || "…"}
         </p>
+        <p className="mt-3 text-sm text-stone-500">
+          Your second brain is an AI companion — not a person.
+        </p>
+        {supportShown && (
+          <p className="mt-4 rounded-xl bg-[#f4f7f1] px-4 py-3 leading-relaxed text-stone-700">
+            If this moment feels bigger than a pause, real support is here:{" "}
+            <Link href="/support" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+              Get support — 988 and more
+            </Link>
+          </p>
+        )}
         {status && (
           <p className="mt-3 text-stone-600" aria-live="polite">
             {status}
