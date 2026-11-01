@@ -21,6 +21,19 @@ import {
   type PairingOffer,
 } from "../../../companion-protocol";
 import { companionStore } from "@/lib/companion";
+import {
+  approveMailbox,
+  clearOwnerBinding,
+  denyMailbox,
+  fetchOwnerEvents,
+  fetchOwnerStatus,
+  loadOwnerBinding,
+  postMailboxOwnerEvent,
+  registerWithMailbox,
+  type MailboxFeedEntry,
+  type MailboxOwnerStatus,
+  type OwnerBinding,
+} from "@/lib/mailboxClient";
 
 // The companion page (Component A, connector slice §2): pairing,
 // owner approval, status, and arming — the PWA half of the companion
@@ -78,7 +91,12 @@ export default function CompanionPage() {
   const [revokeArmed, setRevokeArmed] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [binding, setBinding] = useState<OwnerBinding | null>(null);
   const qrRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    setBinding(loadOwnerBinding());
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -120,6 +138,21 @@ export default function CompanionPage() {
     }
   }
 
+  async function registerOffer(next: PairingOffer) {
+    // The local pairing exists either way; registering it with the
+    // mailbox is what lets the real companion app find it, poll for
+    // approval, and exchange over the wire.
+    try {
+      setBinding(await registerWithMailbox(next));
+    } catch {
+      setBinding(null);
+      setNote(
+        "The pairing was made on this phone, but the companion link didn't answer just now. " +
+          "The code still works typed in by hand — and starting over retries the link.",
+      );
+    }
+  }
+
   async function startPairing() {
     await act(async () => {
       setShownToken(null);
@@ -128,6 +161,7 @@ export default function CompanionPage() {
       setCopyState("idle");
       const next = await createPairing(companionStore, [...COMPANION_SCOPES]);
       setOffer(next);
+      await registerOffer(next);
     });
   }
 
@@ -135,9 +169,13 @@ export default function CompanionPage() {
     await act(async () => {
       setShowQr(false);
       setCopyState("idle");
+      if (binding) await denyMailbox(binding);
+      clearOwnerBinding();
+      setBinding(null);
       await denyPairing(companionStore);
       const next = await createPairing(companionStore, [...COMPANION_SCOPES]);
       setOffer(next);
+      await registerOffer(next);
     });
   }
 
@@ -165,8 +203,8 @@ export default function CompanionPage() {
       <p className="mt-2 leading-relaxed text-stone-600">
         A companion is a small app on this same phone that can hear a press on your earbuds and
         play your cue with the screen off — for the moments when the phone is in your pocket.
-        The companion app itself is a later step. This page is the half that&apos;s ready for
-        it: pairing, your approval, and the session controls, all working now, on this phone.
+        The companion app is installed on this phone. This page pairs with it, takes your
+        approval, and — through the live link below — arms the sessions it stays ready for.
       </p>
 
       {note && (
@@ -213,6 +251,9 @@ export default function CompanionPage() {
           </div>
         )}
       </section>
+
+      {/* ---------- Companion link (the live mailbox) ---------- */}
+      {binding && <MailboxPanel key={binding.pairingId} binding={binding} />}
 
       {/* ---------- Pairing ---------- */}
       {!paired && (
@@ -266,11 +307,9 @@ export default function CompanionPage() {
                 </a>
                 <p className="text-sm leading-relaxed text-stone-600">
                   The companion lives on this same phone, so this button is the way to hand
-                  the pairing over — no camera needed. Until the companion app is installed
-                  on this phone, tapping it has nothing to open yet — that&apos;s expected,
-                  and nothing about the pairing changes. The pairing stays good for the
-                  companion once it exists, and until then the code above can be typed in
-                  by hand.
+                  the pairing over — no camera needed. Tap it and the companion opens with
+                  this pairing ready to finish. If it doesn&apos;t open, the code above can
+                  be typed into the companion by hand — same pairing, same one-time use.
                 </p>
                 <div>
                   <button type="button" className={secondaryBtn} onClick={copyPairingDetails}>
@@ -334,6 +373,9 @@ export default function CompanionPage() {
                       onClick={() =>
                         act(async () => {
                           await approvePairing(companionStore);
+                          if (binding && binding.pairingId === offer.pairingId) {
+                            await approveMailbox(binding);
+                          }
                         })
                       }
                     >
@@ -345,6 +387,11 @@ export default function CompanionPage() {
                       disabled={busy}
                       onClick={() =>
                         act(async () => {
+                          if (binding && binding.pairingId === offer.pairingId) {
+                            await denyMailbox(binding);
+                            clearOwnerBinding();
+                            setBinding(null);
+                          }
                           await denyPairing(companionStore);
                           setOffer(null);
                         })
@@ -356,27 +403,57 @@ export default function CompanionPage() {
                 </div>
               ) : (
                 <div className="mt-6">
-                  <p className="leading-relaxed text-stone-600">
-                    Approved. Finishing uses the code up and makes the companion&apos;s
-                    credential — you&apos;ll see it once, below.
-                  </p>
-                  <button
-                    type="button"
-                    className={`${primaryBtn} mt-3`}
-                    disabled={busy}
-                    onClick={() =>
-                      act(async () => {
-                        const issued = await exchangePairing(companionStore, {
-                          pairingSecret: offer.pairingSecret,
-                          exchangeCode: offer.exchangeCode,
-                        });
-                        setShownToken(issued.rawToken);
-                        setOffer(null);
-                      })
-                    }
-                  >
-                    Finish pairing
-                  </button>
+                  {binding && binding.pairingId === offer.pairingId ? (
+                    <>
+                      <p className="leading-relaxed text-stone-600">
+                        Approved — and the companion link below can see it. Hand the pairing
+                        to the companion with the button above and it finishes from its side;
+                        the link panel will show <em>paired</em> when it has. Finishing on
+                        this phone instead is only a practice run of the same steps.
+                      </p>
+                      <button
+                        type="button"
+                        className={`${secondaryBtn} mt-3`}
+                        disabled={busy}
+                        onClick={() =>
+                          act(async () => {
+                            const issued = await exchangePairing(companionStore, {
+                              pairingSecret: offer.pairingSecret,
+                              exchangeCode: offer.exchangeCode,
+                            });
+                            setShownToken(issued.rawToken);
+                            setOffer(null);
+                          })
+                        }
+                      >
+                        Finish on this phone instead (practice run)
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="leading-relaxed text-stone-600">
+                        Approved. Finishing uses the code up and makes the companion&apos;s
+                        credential — you&apos;ll see it once, below.
+                      </p>
+                      <button
+                        type="button"
+                        className={`${primaryBtn} mt-3`}
+                        disabled={busy}
+                        onClick={() =>
+                          act(async () => {
+                            const issued = await exchangePairing(companionStore, {
+                              pairingSecret: offer.pairingSecret,
+                              exchangeCode: offer.exchangeCode,
+                            });
+                            setShownToken(issued.rawToken);
+                            setOffer(null);
+                          })
+                        }
+                      >
+                        Finish pairing
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </>
@@ -439,9 +516,10 @@ export default function CompanionPage() {
           <>
             <p className="mt-2 leading-relaxed text-stone-600">
               Armed here on this phone
-              {status.session.armedAt ? ` since ${whenText(status.session.armedAt)}` : ""}. The
-              companion app that would hear about this is a later step — for now, nothing has
-              confirmed on the other side, and this card won&apos;t pretend it has.
+              {status.session.armedAt ? ` since ${whenText(status.session.armedAt)}` : ""}. This
+              arm is a record on this phone — the arm the companion itself hears is the one in
+              the companion link panel near the top of this page, and what it reports shows
+              there.
             </p>
             <button
               type="button"
@@ -459,8 +537,8 @@ export default function CompanionPage() {
         ) : (
           <>
             <p className="mt-2 leading-relaxed text-stone-600">
-              Arming records the session here, with the time it started. When the companion app
-              exists, this is the action that tells it to stay ready.
+              Arming here records the session on this phone, with the time it started. The arm
+              the companion hears lives in the companion link panel near the top of this page.
             </p>
             <button
               type="button"
@@ -504,6 +582,8 @@ export default function CompanionPage() {
                 onClick={() =>
                   act(async () => {
                     await revokeCredential(companionStore);
+                    clearOwnerBinding();
+                    setBinding(null);
                     setShownToken(null);
                     setOffer(null);
                     setRevokeArmed(false);
@@ -529,5 +609,177 @@ export default function CompanionPage() {
         <p>Wellness info only, not medical advice.</p>
       </footer>
     </main>
+  );
+}
+
+// The live companion link: the mailbox the real companion app talks
+// to. This panel is the owner's window on it — pairing progress, the
+// arm the companion actually hears, and the feed of what it reports
+// back (cue.played lands here). It polls gently while the page is
+// open; closing the page stops nothing on the companion's side.
+function MailboxPanel({ binding }: { binding: OwnerBinding }) {
+  const [mbStatus, setMbStatus] = useState<MailboxOwnerStatus | null>(null);
+  const [events, setEvents] = useState<MailboxFeedEntry[]>([]);
+  const [linkDown, setLinkDown] = useState(false);
+  const [panelBusy, setPanelBusy] = useState(false);
+  const [panelNote, setPanelNote] = useState("");
+  const cursorRef = useRef<string | null>(null);
+
+  const poll = useCallback(async () => {
+    try {
+      const [s, evs] = await Promise.all([
+        fetchOwnerStatus(binding),
+        fetchOwnerEvents(binding, cursorRef.current),
+      ]);
+      setMbStatus(s);
+      if (evs.length > 0) {
+        cursorRef.current = evs[evs.length - 1].id;
+        setEvents((prev) => [...prev, ...evs].slice(-12));
+      }
+      setLinkDown(false);
+    } catch {
+      setLinkDown(true);
+    }
+  }, [binding]);
+
+  useEffect(() => {
+    void poll();
+    const t = setInterval(() => void poll(), 3000);
+    return () => clearInterval(t);
+  }, [poll]);
+
+  async function send(type: "session.armed" | "session.stopped" | "cue.requested") {
+    setPanelBusy(true);
+    setPanelNote("");
+    try {
+      await postMailboxOwnerEvent(binding, type);
+      await poll();
+    } catch {
+      setPanelNote("That didn't reach the companion link just now — try again.");
+    } finally {
+      setPanelBusy(false);
+    }
+  }
+
+  const pending = mbStatus?.pendingPairing ?? null;
+  const pendingExpired = !!pending && Date.parse(pending.expiresAt) < Date.now();
+  const mbPaired = !!mbStatus?.paired;
+  const mbExpired = mbStatus?.credentialStatus === "expired";
+  const armed = !!mbStatus?.session.armed;
+
+  function viaWords(entry: MailboxFeedEntry): string {
+    const via = entry.payload?.via;
+    if (via === "media-button") return " — from your earbud press";
+    if (via === "request") return " — from a cue request";
+    return "";
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl border border-[#2f5d3a]/40 bg-[#f4f7f1] p-6 shadow-sm">
+      <h2 className="text-xl font-semibold text-stone-900">Companion link — live</h2>
+      <p className="mt-2 leading-relaxed text-stone-600">
+        The real connection to the companion app on this phone. What the companion reports
+        shows here.
+      </p>
+
+      {linkDown && !mbStatus && (
+        <p className="mt-3 leading-relaxed text-stone-700">
+          The link isn&apos;t answering just now — it keeps retrying on its own.
+        </p>
+      )}
+      {linkDown && mbStatus && (
+        <p className="mt-3 text-sm leading-relaxed text-stone-600">
+          The link missed a check just now — retrying. What&apos;s shown is the last it
+          reported.
+        </p>
+      )}
+
+      {mbStatus && !mbPaired && pending && !pendingExpired && (
+        <p className="mt-3 leading-relaxed text-stone-700">
+          {pending.approved
+            ? "Approved — the companion can finish pairing now. This panel will show paired the moment it does."
+            : "Waiting for the companion to open this pairing. Approve it in the pairing section below once it does."}
+        </p>
+      )}
+      {mbStatus && !mbPaired && pendingExpired && (
+        <p className="mt-3 leading-relaxed text-stone-700">
+          That pairing expired before the companion finished — start a fresh one below.
+        </p>
+      )}
+      {mbStatus && !mbPaired && !pending && (
+        <p className="mt-3 leading-relaxed text-stone-700">
+          No pairing is live on the link right now.
+        </p>
+      )}
+
+      {mbStatus && mbPaired && (
+        <div className="mt-3 flex flex-col gap-3 leading-relaxed text-stone-700">
+          <p className="text-lg font-medium text-stone-900">
+            {mbExpired
+              ? "Paired — the companion's credential needs renewing"
+              : armed
+                ? "Paired — session armed on the companion"
+                : "Paired"}
+          </p>
+          {mbStatus.pairedAt && <p>Paired on {whenText(mbStatus.pairedAt)}.</p>}
+          {armed && mbStatus.session.armedAt && (
+            <p>Armed since {whenText(mbStatus.session.armedAt)}.</p>
+          )}
+          {mbExpired ? (
+            <p>
+              Nothing was erased — the companion renews its credential from its own side,
+              and the pairing, its permissions, and its history stay exactly as they are.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {armed ? (
+                <>
+                  <button
+                    type="button"
+                    className={secondaryBtn}
+                    disabled={panelBusy}
+                    onClick={() => void send("session.stopped")}
+                  >
+                    Stop the session
+                  </button>
+                  <button
+                    type="button"
+                    className={secondaryBtn}
+                    disabled={panelBusy}
+                    onClick={() => void send("cue.requested")}
+                  >
+                    Ask for my cue
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={primaryBtn}
+                  disabled={panelBusy}
+                  onClick={() => void send("session.armed")}
+                >
+                  Arm a session
+                </button>
+              )}
+            </div>
+          )}
+          {panelNote && <p className="text-sm text-stone-600">{panelNote}</p>}
+        </div>
+      )}
+
+      {events.length > 0 && (
+        <div className="mt-5">
+          <h3 className="font-semibold text-stone-900">What the companion has reported</h3>
+          <ul className="mt-2 flex flex-col gap-1 leading-relaxed text-stone-700">
+            {events.map((entry) => (
+              <li key={entry.id}>
+                {EVENT_WORDS[entry.type] ?? entry.type}
+                {viaWords(entry)} — {whenText(entry.at)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
