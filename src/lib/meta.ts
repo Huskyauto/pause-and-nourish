@@ -27,6 +27,10 @@
 
 export const META_API_BASE_URL = process.env.META_API_BASE_URL ?? "https://api.meta.ai/v1";
 export const META_CHAT_MODEL = "muse-spark-1.3";
+/** Muse Wonder — the weekly deep review only (Day 7). The daily
+ * brain stays on Spark; Wonder is the slower, heavier pass over a
+ * week's entries. Two-tier model use is deliberate architecture. */
+export const META_WONDER_MODEL = "muse-wonder-1.0";
 export const META_TRANSCRIBE_MODEL = "muse-voice-transcribe-1.0";
 
 export function metaApiKey(): string | null {
@@ -76,13 +80,17 @@ export interface ChatMessage {
   content: string;
 }
 
-// Muse Spark chat completion. Returns the reply text (possibly empty).
-export async function metaChat(messages: ChatMessage[]): Promise<string> {
+// Muse chat completion (Spark by default; Wonder for the weekly
+// review). Returns the reply text (possibly empty).
+export async function metaChat(
+  messages: ChatMessage[],
+  model: string = META_CHAT_MODEL,
+): Promise<string> {
   const res = await metaFetch("/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: META_CHAT_MODEL,
+      model,
       messages,
       temperature: 0.4,
     }),

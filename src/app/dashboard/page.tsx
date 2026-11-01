@@ -1,9 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { deleteEverything, listEntries, type JournalEntry, type Need } from "@/lib/journal";
+import {
+  deleteEverything,
+  getNudgeRecord,
+  getPatterns,
+  getShieldPlan,
+  getWeeklyReview,
+  listEntries,
+  saveNudgeRecord,
+  savePatterns,
+  saveWeeklyReview,
+  type JournalEntry,
+  type Need,
+  type ShieldPlan,
+  type WeeklyReview,
+} from "@/lib/journal";
 import { PAUSE_TOOLS } from "@/lib/tools";
+import {
+  NEED_WORDS,
+  confirmedPatterns,
+  deriveCandidates,
+  reconcilePatterns,
+  templateLines,
+  type PatternRecord,
+} from "@/lib/patterns";
+import {
+  DEFAULT_NUDGE_POLICY,
+  EMPTY_NUDGE_STATE,
+  MORNING_HEADS_UP,
+  buildHeadsUp,
+  headsUpBlock,
+  localDateStr,
+  recordResponse,
+  recordShown,
+  settleNudgeState,
+  type HeadsUp,
+  type NudgePolicy,
+  type NudgeResponse,
+  type NudgeState,
+} from "@/lib/nudges";
 
 // Day 4: the dashboard runs on the real on-device journal. Everything here
 // is computed on this device from the user's own entries — nothing leaves
@@ -56,6 +93,18 @@ export default function DashboardPage() {
   // Delete-everything: two-step confirm, then all three on-device
   // stores (journal, Shield Plan, voice recordings) are cleared.
   const [deleteStep, setDeleteStep] = useState<"idle" | "confirm" | "done">("idle");
+  // Day 7: memory tiers, the morning heads-up (governed), and the
+  // Wonder weekly review.
+  const [plan, setPlan] = useState<ShieldPlan | null>(null);
+  const [patterns, setPatterns] = useState<PatternRecord[]>([]);
+  const [policy, setPolicy] = useState<NudgePolicy>(DEFAULT_NUDGE_POLICY);
+  const [nudgeState, setNudgeState] = useState<NudgeState>(EMPTY_NUDGE_STATE);
+  const [headsUp, setHeadsUp] = useState<HeadsUp | null>(null);
+  const [headsUpReply, setHeadsUpReply] = useState("");
+  const [review, setReview] = useState<WeeklyReview | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const day7Loaded = useRef(false);
 
   async function handleDeleteEverything() {
     await deleteEverything().catch(() => {});
@@ -77,6 +126,145 @@ export default function DashboardPage() {
       live = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (day7Loaded.current) return;
+    day7Loaded.current = true;
+    void (async () => {
+      const now = new Date();
+      const [p, storedPatterns, nudgeRec, storedReview, all] = await Promise.all([
+        getShieldPlan().catch(() => null),
+        getPatterns().catch(() => [] as PatternRecord[]),
+        getNudgeRecord().catch(() => null),
+        getWeeklyReview().catch(() => null),
+        listEntries().catch(() => [] as JournalEntry[]),
+      ]);
+      setPlan(p);
+      setReview(storedReview);
+      const merged = reconcilePatterns(storedPatterns, deriveCandidates(all, now), now);
+      setPatterns(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(storedPatterns)) {
+        void savePatterns(merged).catch(() => {});
+      }
+      const rec = nudgeRec ?? { policy: DEFAULT_NUDGE_POLICY, state: EMPTY_NUDGE_STATE };
+      const settled = settleNudgeState(rec.state, now);
+      setPolicy(rec.policy);
+      setNudgeState(settled);
+      // The morning heads-up: governed first (headsUpBlock), then
+      // built only from confirmed patterns + declared windows.
+      // Being rendered is being shown — record it once.
+      if (p && !headsUpBlock(rec.policy, settled, now)) {
+        const built = buildHeadsUp(p, merged, now);
+        if (built) {
+          const shown = recordShown(settled, MORNING_HEADS_UP, now);
+          setHeadsUp(built);
+          setNudgeState(shown);
+          void saveNudgeRecord({ policy: rec.policy, state: shown }).catch(() => {});
+          return;
+        }
+      }
+      if (settled !== rec.state) {
+        void saveNudgeRecord({ policy: rec.policy, state: settled }).catch(() => {});
+      }
+    })();
+  }, []);
+
+  async function answerHeadsUp(response: NudgeResponse) {
+    const now = new Date();
+    const { policy: nextPolicy, state: nextState } = recordResponse(
+      policy,
+      nudgeState,
+      MORNING_HEADS_UP,
+      response,
+      now,
+    );
+    setPolicy(nextPolicy);
+    setNudgeState(nextState);
+    setHeadsUp(null);
+    setHeadsUpReply(
+      response === "helpful"
+        ? "Good — it'll be here when it can stand on your record."
+        : response === "stop-type"
+          ? "Stopped. Morning heads-ups are off unless you allow them again on the memory page."
+          : response === "less-often"
+            ? "Noted — heads-ups pause for three days."
+            : "Paused for today.",
+    );
+    void saveNudgeRecord({ policy: nextPolicy, state: nextState }).catch(() => {});
+  }
+
+  function weekStartStr(d: Date): string {
+    const monday = new Date(d);
+    const shift = (d.getDay() + 6) % 7; // days since Monday
+    monday.setDate(d.getDate() - shift);
+    return localDateStr(monday);
+  }
+
+  async function runWeeklyReview() {
+    if (!entries) return;
+    setReviewBusy(true);
+    setReviewNote("");
+    try {
+      const now = new Date();
+      const week = entries.filter(
+        (e) => now.getTime() - new Date(e.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000,
+      );
+      const lines = templateLines(week);
+      const learnings = week
+        .map((e) => e.learning)
+        .filter((l): l is string => !!l)
+        .slice(0, 5);
+      const needCounts = new Map<Need, number>();
+      for (const e of week) if (e.need) needCounts.set(e.need, (needCounts.get(e.need) ?? 0) + 1);
+      const needsNamed = [...needCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([n]) => NEED_WORDS[n]);
+      const weekChoices = new Map<string, number>();
+      for (const e of week) {
+        if (e.choice) weekChoices.set(e.choice, (weekChoices.get(e.choice) ?? 0) + 1);
+      }
+      const choiceText = [...weekChoices.entries()]
+        .map(([c, n]) => `${CHOICE_LABELS[c] ?? c} ×${n}`)
+        .join(" · ");
+      const digest = {
+        weekLabel: `The week of ${new Date(weekStartStr(now)).toLocaleDateString("en-US", { month: "long", day: "numeric" })}`,
+        moments: week.length,
+        pauses: week.filter((e) => e.pauseCompleted).length,
+        templateLines: lines,
+        learnings,
+        confirmedPatterns: confirmedPatterns(patterns).map((p) => `${p.text} (${p.evidence})`),
+        needsNamed,
+        choicesSummary: choiceText,
+      };
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ digest }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { review?: string; error?: string };
+      if (!res.ok || !data.review) {
+        setReviewNote(
+          data.error === "meta_not_configured"
+            ? "The weekly review isn't available on this build yet — it needs the review connection set up."
+            : "The review didn't come through just now — try again in a bit.",
+        );
+        return;
+      }
+      const saved: WeeklyReview = {
+        weekStart: weekStartStr(now),
+        generatedAt: now.toISOString(),
+        text: data.review,
+        templateLines: lines,
+      };
+      setReview(saved);
+      void saveWeeklyReview(saved).catch(() => {});
+    } catch {
+      setReviewNote("The review didn't come through just now — try again in a bit.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   const weekCutoff = nowMs - 7 * 24 * 60 * 60 * 1000;
   const all = entries ?? [];
@@ -214,6 +402,59 @@ export default function DashboardPage() {
         Patterns, not grades — all from this device. Nothing leaves your phone.
       </p>
 
+      {headsUp && (
+        <section
+          className="mt-6 rounded-2xl border border-[#2f5d3a]/40 bg-[#f4f7f1] p-5 shadow-sm"
+          aria-label="Morning heads-up"
+        >
+          <h2 className="font-semibold text-stone-900">{headsUp.headline}</h2>
+          <p className="mt-2 leading-relaxed text-stone-700">{headsUp.body}</p>
+          <p className="mt-2 text-sm leading-relaxed text-stone-600">{headsUp.why}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full bg-[#2f5d3a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#274c30]"
+              onClick={() => void answerHeadsUp("helpful")}
+            >
+              Helpful
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+              onClick={() => void answerHeadsUp("wrong-time")}
+            >
+              Wrong time
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+              onClick={() => void answerHeadsUp("less-often")}
+            >
+              Less often
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+              onClick={() => void answerHeadsUp("pause-today")}
+            >
+              Pause today
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+              onClick={() => void answerHeadsUp("stop-type")}
+            >
+              Stop this type
+            </button>
+          </div>
+        </section>
+      )}
+      {headsUpReply && (
+        <p className="mt-4 rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-700">
+          {headsUpReply}
+        </p>
+      )}
+
       <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2" aria-label="Weekly summary">
         {stats.map((s) => (
           <article key={s.label} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -325,6 +566,36 @@ export default function DashboardPage() {
           </ul>
         </section>
       )}
+
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <h2 className="font-semibold text-stone-900">Your weekly review</h2>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          Once a week, a slower look over your record — what showed up, what helped, one focus
+          for next week, in your own words. It reads only what you&apos;ve recorded here.
+        </p>
+        {review ? (
+          <div className="mt-3 whitespace-pre-line leading-relaxed text-stone-700">{review.text}</div>
+        ) : (
+          <p className="mt-2 leading-relaxed text-stone-600">No review yet for this week.</p>
+        )}
+        {reviewNote && <p className="mt-2 text-sm leading-relaxed text-stone-600">{reviewNote}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-full bg-[#2f5d3a] px-5 py-3 font-semibold text-white transition hover:bg-[#274c30] disabled:opacity-40"
+            disabled={reviewBusy || !entries || thisWeek.length === 0}
+            onClick={() => void runWeeklyReview()}
+          >
+            {reviewBusy ? "Reading your week…" : review ? "Run it again" : "Run my weekly review"}
+          </button>
+          <Link
+            href="/memory"
+            className="rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a]"
+          >
+            What I remember about you
+          </Link>
+        </div>
+      </section>
 
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="font-semibold text-stone-900">Your companion</h2>

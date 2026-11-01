@@ -199,6 +199,9 @@ const SHIELD_KEY = "plan";
 const PROFILE_KEY = "profile";
 const PLACES_KEY = "places";
 const COMPANION_KEY = "companion";
+const PATTERNS_KEY = "patterns";
+const REVIEW_KEY = "weeklyReview";
+const NUDGE_KEY = "nudge";
 const CUE_STORE = "voiceCue";
 
 const LS_JOURNAL = "pn.journal";
@@ -206,6 +209,9 @@ const LS_SHIELD = "pn.shieldPlan";
 const LS_PROFILE = "pn.userProfile";
 const LS_PLACES = "pn.places";
 const LS_COMPANION = "pn.companion";
+const LS_PATTERNS = "pn.patterns";
+const LS_REVIEW = "pn.weeklyReview";
+const LS_NUDGE = "pn.nudge";
 const LS_CUE = "pn.voiceCue";
 const LS_RESET_CUE = "pn.voiceResetCue";
 
@@ -346,6 +352,27 @@ async function idbSavePlaces(places: SavedPlace[]): Promise<void> {
   const tx = db.transaction(SHIELD_STORE, "readwrite");
   await idbRequest(
     tx.objectStore(SHIELD_STORE).put({ key: PLACES_KEY, places, updatedAt: new Date().toISOString() }),
+  );
+  db.close();
+}
+
+// Day 7 records (patterns, weekly review, nudge governance) live in
+// the same keyed store under their own keys — one generic pair of
+// helpers moves them, in the same {key, <field>, updatedAt} shape.
+async function idbGetRecordField<T>(key: string, field: string): Promise<T | null> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readonly");
+  const rec = await idbRequest(tx.objectStore(SHIELD_STORE).get(key));
+  db.close();
+  const value = (rec as Record<string, unknown> | undefined)?.[field];
+  return (value as T) ?? null;
+}
+
+async function idbSaveRecordField(key: string, field: string, value: unknown): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(SHIELD_STORE, "readwrite");
+  await idbRequest(
+    tx.objectStore(SHIELD_STORE).put({ key, [field]: value, updatedAt: new Date().toISOString() }),
   );
   db.close();
 }
@@ -544,6 +571,70 @@ export async function saveCompanionRecord(record: string): Promise<void> {
   );
 }
 
+// ---------- Day 7 records: patterns, weekly review, nudges ----------
+
+import type { PatternRecord } from "./patterns";
+import type { NudgePolicy, NudgeState } from "./nudges";
+
+/** The stored weekly review (Wonder pass), kept on-device. */
+export interface WeeklyReview {
+  /** Local date (YYYY-MM-DD) of the Monday of the week reviewed. */
+  weekStart: string;
+  generatedAt: string;
+  /** The review text, in the user's own words (template-led). */
+  text: string;
+  /** The computed locked-template lines the review was built from. */
+  templateLines: string[];
+}
+
+export async function getPatterns(): Promise<PatternRecord[]> {
+  const found = await withFallback(
+    () => idbGetRecordField<PatternRecord[]>(PATTERNS_KEY, "patterns"),
+    () => lsRead<PatternRecord[] | null>(LS_PATTERNS, null),
+  );
+  return found ?? [];
+}
+
+export async function savePatterns(patterns: PatternRecord[]): Promise<void> {
+  await withFallback(
+    () => idbSaveRecordField(PATTERNS_KEY, "patterns", patterns),
+    () => lsWrite(LS_PATTERNS, patterns),
+  );
+}
+
+export async function getWeeklyReview(): Promise<WeeklyReview | null> {
+  return withFallback(
+    () => idbGetRecordField<WeeklyReview>(REVIEW_KEY, "review"),
+    () => lsRead<WeeklyReview | null>(LS_REVIEW, null),
+  );
+}
+
+export async function saveWeeklyReview(review: WeeklyReview): Promise<void> {
+  await withFallback(
+    () => idbSaveRecordField(REVIEW_KEY, "review", review),
+    () => lsWrite(LS_REVIEW, review),
+  );
+}
+
+export interface NudgeRecord {
+  policy: NudgePolicy;
+  state: NudgeState;
+}
+
+export async function getNudgeRecord(): Promise<NudgeRecord | null> {
+  return withFallback(
+    () => idbGetRecordField<NudgeRecord>(NUDGE_KEY, "nudge"),
+    () => lsRead<NudgeRecord | null>(LS_NUDGE, null),
+  );
+}
+
+export async function saveNudgeRecord(record: NudgeRecord): Promise<void> {
+  await withFallback(
+    () => idbSaveRecordField(NUDGE_KEY, "nudge", record),
+    () => lsWrite(LS_NUDGE, record),
+  );
+}
+
 export async function clearCompanionRecord(): Promise<void> {
   await withFallback(
     () => idbSaveCompanionRecord(""),
@@ -651,6 +742,9 @@ export async function deleteEverything(): Promise<void> {
     localStorage.removeItem(LS_PROFILE);
     localStorage.removeItem(LS_PLACES);
     localStorage.removeItem(LS_COMPANION);
+    localStorage.removeItem(LS_PATTERNS);
+    localStorage.removeItem(LS_REVIEW);
+    localStorage.removeItem(LS_NUDGE);
     // The geolocation-granted flag (src/lib/places.ts) — a bare flag,
     // not user content, but "delete everything" should leave no
     // app state behind (code review, 2026-10-31).

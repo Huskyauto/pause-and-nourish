@@ -7,6 +7,7 @@ import {
   addEntry,
   EMPTY_SHIELD_PLAN,
   getCue,
+  getPatterns,
   getShieldPlan,
   getUserProfile,
   hasUserProfile,
@@ -18,6 +19,7 @@ import {
   type ProfileVoice,
   type UserProfile,
 } from "@/lib/journal";
+import { confirmedPatterns } from "@/lib/patterns";
 import {
   assemblePlan,
   dealtSwap,
@@ -588,6 +590,9 @@ export default function TalkClient() {
     // user with no places gets exactly the old request. Only the
     // label travels; coordinates never leave the device.
     const placeLabel = await getPlaceLabel().catch(() => null);
+    const confirmedTexts = await getPatterns()
+      .then((ps) => confirmedPatterns(ps).map((p) => `${p.text} (${p.evidence})`))
+      .catch(() => [] as string[]);
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
@@ -603,6 +608,7 @@ export default function TalkClient() {
           dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
           riskWindow: computeRiskWindowState(plan, now),
           ...(placeLabel ? { placeLabel } : {}),
+          ...(confirmedTexts.length ? { confirmedPatterns: confirmedTexts } : {}),
           todayJournal: todayRef.current,
           sessionOutcomes: sessionOutcomesRef.current,
           event: pendingEventRef.current,

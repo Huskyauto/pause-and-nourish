@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   addEntry,
   getEntry,
+  getPatterns,
   getShieldPlan,
   getUserProfile,
   hasUserProfile,
@@ -17,6 +18,7 @@ import {
   type ShieldPlan,
   type UserProfile,
 } from "@/lib/journal";
+import { confirmedPatterns } from "@/lib/patterns";
 import { PAUSE_TOOLS, toolById, toolForNeed, type PauseTool } from "@/lib/tools";
 import { speakLine } from "@/lib/speak";
 import { computeRiskWindowState } from "@/lib/riskWindows";
@@ -311,6 +313,9 @@ export default function PauseClient() {
     // permission is already granted; otherwise the field is
     // omitted and the request is exactly the old one.
     const placeLabel = await getPlaceLabel().catch(() => null);
+    const confirmedTexts = await getPatterns()
+      .then((ps) => confirmedPatterns(ps).map((p) => `${p.text} (${p.evidence})`))
+      .catch(() => [] as string[]);
     try {
       const res = await fetch("/api/converse", {
         method: "POST",
@@ -327,6 +332,7 @@ export default function PauseClient() {
           dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
           riskWindow: computeRiskWindowState(plan, now),
           ...(placeLabel ? { placeLabel } : {}),
+          ...(confirmedTexts.length ? { confirmedPatterns: confirmedTexts } : {}),
           todayJournal,
         }),
       });

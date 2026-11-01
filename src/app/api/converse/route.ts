@@ -623,6 +623,7 @@ function momentContext(
   today: TodayJournalItem[],
   profile: UserProfile | null,
   placeLabel: string | null,
+  confirmed: string[] = [],
 ): string {
   const lines: string[] = [
     profile
@@ -678,6 +679,15 @@ function momentContext(
     }
   } else {
     lines.push("- Nothing in today's journal yet.");
+  }
+  if (confirmed.length) {
+    lines.push(
+      "- Patterns they have CONFIRMED about themselves (reviewed on their memory page and answered yes — settled facts about them, not guesses):",
+    );
+    for (const p of confirmed) lines.push(`  - ${p}`);
+    lines.push(
+      "  You may refer to these plainly when they fit the moment. Never present any other pattern as a fact about them.",
+    );
   }
   return lines.join("\n");
 }
@@ -751,6 +761,7 @@ async function handleMoment(args: {
   riskWindow: RiskWindowContext | null;
   today: TodayJournalItem[];
   placeLabel: string | null;
+  confirmedPatterns: string[];
 }): Promise<Response> {
   if (!metaApiKey()) {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -761,7 +772,7 @@ async function handleMoment(args: {
     { role: "system", content: momentSystemPrompt(args.kind, name, args.directness, hasKindSentence) },
     {
       role: "user",
-      content: momentContext(args.localTime, args.dayType, args.riskWindow, args.today, args.profile, args.placeLabel),
+      content: momentContext(args.localTime, args.dayType, args.riskWindow, args.today, args.profile, args.placeLabel, args.confirmedPatterns),
     },
     { role: "user", content: playbookContext(args.plan, args.recent) },
   ];
@@ -883,6 +894,19 @@ function coercePlaceLabel(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const label = raw.trim().slice(0, 60);
   return label ? label : null;
+}
+
+// Day 7: patterns the user reviewed and CONFIRMED on the memory
+// page. Only confirmed patterns ever travel — tentative candidates
+// are never sent, so the brain can never mistake a guess for a
+// fact about the user.
+function coerceConfirmedPatterns(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim().slice(0, 200))
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 function coerceRiskWindow(raw: unknown): RiskWindowContext | null {
@@ -1109,6 +1133,7 @@ export async function POST(request: Request) {
   let dayType: DayType | null = null;
   let riskWindow: RiskWindowContext | null = null;
   let placeLabel: string | null = null;
+  let confirmedPatterns: string[] = [];
   let today: TodayJournalItem[] = [];
   let sessionOutcomes: SessionOutcomeItem[] = [];
   let event: ConverseEvent | null = null;
@@ -1129,6 +1154,7 @@ export async function POST(request: Request) {
       dayType?: unknown;
       riskWindow?: unknown;
       placeLabel?: unknown;
+      confirmedPatterns?: unknown;
       todayJournal?: unknown;
       sessionOutcomes?: unknown;
       event?: unknown;
@@ -1156,6 +1182,7 @@ export async function POST(request: Request) {
     dayType = coerceDayType(body?.dayType);
     riskWindow = coerceRiskWindow(body?.riskWindow);
     placeLabel = coercePlaceLabel(body?.placeLabel);
+    confirmedPatterns = coerceConfirmedPatterns(body?.confirmedPatterns);
     today = coerceToday(body?.todayJournal);
     sessionOutcomes = coerceOutcomes(body?.sessionOutcomes);
     event = coerceEvent(body?.event);
@@ -1193,6 +1220,7 @@ export async function POST(request: Request) {
       riskWindow,
       today,
       placeLabel,
+      confirmedPatterns,
     });
   }
 
@@ -1218,7 +1246,7 @@ export async function POST(request: Request) {
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement, profile) },
-    { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile, placeLabel) },
+    { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile, placeLabel, confirmedPatterns) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
   const record = sessionRecordContext(sessionOutcomes, profile);
