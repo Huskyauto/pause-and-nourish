@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import BottomNav from "@/components/BottomNav";
 
 export const metadata: Metadata = {
   title: "Pause & Nourish",
@@ -28,6 +29,7 @@ export default function RootLayout({
       <body className="bg-[#faf7f0] font-sans text-stone-900 antialiased">
         <ServiceWorkerRegister />
         {children}
+        <BottomNav />
       </body>
     </html>
   );

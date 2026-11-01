@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CheckInCount from "@/components/CheckInCount";
+import SecondBrain from "@/components/SecondBrain";
 import { getShieldPlan, getUserProfile, hasUserProfile } from "@/lib/journal";
 import { activeRiskWindow } from "@/lib/riskWindows";
 
@@ -107,9 +108,7 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 py-10">
       <header className="text-center">
-        <p className="text-4xl" aria-hidden="true">
-          🌿
-        </p>
+        <SecondBrain state="idle" size={176} />
         <h1 className="mt-2 text-4xl font-bold tracking-tight text-[#2f5d3a]">
           Pause &amp; Nourish
         </h1>
@@ -148,21 +147,21 @@ export default function Home() {
       )}
 
       <section className={`${windowCard ? "mt-6" : "mt-10"} rounded-2xl border border-[#9a3b26]/25 bg-[#fdf1ec] p-6 text-center`}>
-        <p className="font-semibold text-stone-900">Already in it?</p>
+        <p className="font-semibold text-stone-900">In a tough moment right now?</p>
         <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
-          Skip the form. Go straight to the pause — it opens in your own voice, composed
-          for this moment.
+          This is the button for that. Your second brain asks a few questions, then
+          suggests the next step — or walks you through one of your exercises, out loud.
         </p>
         <Link
           href="/pause?sos=1"
           className="mt-4 inline-block w-full rounded-full bg-[#9a3b26] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#7f3120] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#9a3b26]/40"
         >
-          I&apos;m in it — SOS
+          SOS — I&apos;m in it
         </Link>
       </section>
 
       <section className="mt-6 rounded-2xl border border-[#2f5d3a]/25 bg-[#f2f6ef] p-6 text-center">
-        <p className="font-semibold text-stone-900">Talk with me</p>
+        <p className="font-semibold text-stone-900">Talk to Me</p>
         <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-stone-600">
           Your second brain asks, one question at a time. You answer out loud — it deals
           your own plan back to you, and can lead one of your moves out loud when the
@@ -172,7 +171,7 @@ export default function Home() {
           href="/talk"
           className="mt-4 inline-block w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#2f5d3a]/40"
         >
-          Talk with me
+          Talk to Me
         </Link>
       </section>
 
