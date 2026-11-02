@@ -217,6 +217,11 @@ export default function Home() {
           prescribe. If eating ever feels out of control or distressing,
           please reach out to a clinician you trust.
         </p>
+        <p className="mt-3">
+          <Link href="/about" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+            About this app — please read
+          </Link>
+        </p>
       </footer>
     </main>
   );

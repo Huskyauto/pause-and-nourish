@@ -69,7 +69,12 @@ export default function SupportPage() {
       </section>
 
       <footer className="mt-auto pt-10 text-center text-sm text-stone-600">
-        <p>Wellness info only, not medical advice.</p>
+        <p>
+          <Link href="/about" className="font-medium text-[#2f5d3a] underline underline-offset-4">
+            About this app — please read
+          </Link>
+        </p>
+        <p className="mt-3">Wellness info only, not medical advice.</p>
       </footer>
     </main>
   );
