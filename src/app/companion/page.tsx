@@ -213,10 +213,113 @@ export default function CompanionPage() {
         </p>
       )}
 
+      {/* ---------- Setup checklist (Day 8: the gate-proven steps, in order) ---------- */}
+      <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold text-stone-900">
+          Set up your companion (about 5 minutes, one time)
+        </h2>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          Your companion is a small second app. It listens for your headset button — even
+          with the screen off — and plays your recorded cue. You set it up once. Before you
+          start: install the companion app on this same phone, and have your wireless
+          headset nearby.
+        </p>
+        <ol className="mt-4 flex list-decimal flex-col gap-3 pl-5 leading-relaxed text-stone-700">
+          <li>
+            <strong className="text-stone-900">
+              Open the companion app and tap “Allow Notifications.”
+            </strong>{" "}
+            The companion cannot start watching for your headset until notifications are
+            allowed. If you skip this, arming will look like it worked but nothing will
+            happen.
+          </li>
+          <li>
+            <strong className="text-stone-900">Start a pairing below, on this page.</strong>{" "}
+            Tap <strong className="text-stone-900">“Open in the companion app”</strong> —
+            it hands the pairing over for you. If that button has nothing to open: tap{" "}
+            <strong className="text-stone-900">Copy pairing details</strong> instead,
+            switch to the companion app, paste into the “Pairing link or copied text” box,
+            and tap <strong className="text-stone-900">Read pasted pairing</strong>, then{" "}
+            <strong className="text-stone-900">Pair</strong>.
+          </li>
+          <li>
+            <strong className="text-stone-900">Come back here and tap Approve.</strong>{" "}
+            The companion waits for this. Within a few seconds it will show{" "}
+            <strong className="text-stone-900">Paired</strong>.
+          </li>
+          <li>
+            <strong className="text-stone-900">
+              Leave the companion app open on screen.
+            </strong>{" "}
+            In the <strong className="text-stone-900">“Companion link — live”</strong>{" "}
+            panel below, tap <strong className="text-stone-900">Arm a session</strong>.
+            The companion only accepts an arm while it is open and visible — this is
+            normal, not an error. You will see its “Second Brain Watch — armed” notice.
+          </li>
+          <li>
+            <strong className="text-stone-900">
+              In the companion app, open “Your cue” and tap Preview cue once.
+            </strong>{" "}
+            You should hear your recorded cue. This also tells your phone: headset presses
+            go to the companion. Skip this and the button may answer to a different app.
+          </li>
+          <li>
+            <strong className="text-stone-900">Test it the real way.</strong> Lock the
+            phone so the screen is off. Press your{" "}
+            <strong className="text-stone-900">headset&apos;s play button once</strong> — a
+            quick press. Your cue should play, and the panel below will show “Your cue
+            played.”
+          </li>
+        </ol>
+        <p className="mt-4 leading-relaxed text-stone-700">
+          That&apos;s it. From now on: open the companion, arm from this page, and the
+          button is live.
+        </p>
+        <h3 className="mt-5 font-semibold text-stone-900">If something doesn&apos;t work</h3>
+        <ul className="mt-2 flex list-disc flex-col gap-2 pl-5 leading-relaxed text-stone-700">
+          <li>
+            <strong className="text-stone-900">Companion says “pairing not found”:</strong>{" "}
+            the pairing expired before it was approved. Start over from step 2 — nothing
+            is damaged, and a fresh pairing takes a minute.
+          </li>
+          <li>
+            <strong className="text-stone-900">
+              You armed, but the companion still says “not armed”:
+            </strong>{" "}
+            open the companion and leave it on screen for a few seconds (step 4), and check
+            that notifications are allowed (step 1).
+          </li>
+          <li>
+            <strong className="text-stone-900">Headset press does nothing:</strong> pull
+            down your phone&apos;s media panel. It should show the{" "}
+            <strong className="text-stone-900">Second Brain Watch</strong> player. If a
+            different app is shown, go back to step 5 — one Preview cue tap hands the
+            button to the companion.
+          </li>
+          <li>
+            <strong className="text-stone-900">
+              Your earbuds pop up a list of assistants (Amazon, Bixby, Google,
+              Perplexity):
+            </strong>{" "}
+            that is the earbuds&apos; touch-and-hold action, not the companion. The cue
+            listens for a plain media play press — use your headset&apos;s play button,
+            one quick press.
+          </li>
+        </ul>
+      </section>
+
       {/* ---------- Status card ---------- */}
       <section className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-stone-900">Status</h2>
-        {!status ? (
+        {binding ? (
+          <p className="mt-3 leading-relaxed text-stone-700">
+            Your companion is connected through the live link — the{" "}
+            <strong className="text-stone-900">“Companion link — live”</strong> panel just
+            below shows the real status: paired, armed, and what it last reported. (This
+            phone also keeps the beginnings of a practice pairing from before the link
+            existed; it stays quiet while the live link is connected.)
+          </p>
+        ) : !status ? (
           <p className="mt-2 text-stone-600">Loading…</p>
         ) : (
           <div className="mt-3 flex flex-col gap-2 leading-relaxed text-stone-700">
@@ -292,6 +395,28 @@ export default function CompanionPage() {
               <p className="mt-3 text-center text-3xl font-bold tracking-widest text-stone-900">
                 {offer.exchangeCode}
               </p>
+              <div className="mt-4 rounded-xl border border-stone-200 px-4 py-3">
+                <p className="text-sm leading-relaxed text-stone-600">
+                  All three pairing values, in plain text — if you type them into the
+                  companion by hand, its form asks for each one:
+                </p>
+                <dl className="mt-2 flex flex-col gap-2 text-sm">
+                  <div>
+                    <dt className="font-semibold text-stone-900">Pairing ID</dt>
+                    <dd className="break-all font-mono text-stone-800">{offer.pairingId}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-stone-900">Secret</dt>
+                    <dd className="break-all font-mono text-stone-800">
+                      {offer.pairingSecret}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-stone-900">Code</dt>
+                    <dd className="font-mono text-stone-800">{offer.exchangeCode}</dd>
+                  </div>
+                </dl>
+              </div>
 
               {/* Carriers: ONE payload (pairingPayloadFields), several
                   ways to hand it over. The companion lives on this
@@ -408,26 +533,9 @@ export default function CompanionPage() {
                       <p className="leading-relaxed text-stone-600">
                         Approved — and the companion link below can see it. Hand the pairing
                         to the companion with the button above and it finishes from its side;
-                        the link panel will show <em>paired</em> when it has. Finishing on
-                        this phone instead is only a practice run of the same steps.
+                        the link panel will show <em>paired</em> when it has. There is
+                        nothing else to tap here — the finish happens in the companion.
                       </p>
-                      <button
-                        type="button"
-                        className={`${secondaryBtn} mt-3`}
-                        disabled={busy}
-                        onClick={() =>
-                          act(async () => {
-                            const issued = await exchangePairing(companionStore, {
-                              pairingSecret: offer.pairingSecret,
-                              exchangeCode: offer.exchangeCode,
-                            });
-                            setShownToken(issued.rawToken);
-                            setOffer(null);
-                          })
-                        }
-                      >
-                        Finish on this phone instead (practice run)
-                      </button>
                     </>
                   ) : (
                     <>
@@ -483,7 +591,10 @@ export default function CompanionPage() {
         </section>
       )}
 
-      {/* ---------- Session arm ---------- */}
+      {/* ---------- Session arm (local practice surface — hidden while a
+          live mailbox binding exists; the link panel above carries the
+          real Arm / Stop / Ask-for-my-cue controls then) ---------- */}
+      {!binding && (
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-stone-900">Arm a session</h2>
         {!paired ? (
@@ -555,6 +666,7 @@ export default function CompanionPage() {
           </>
         )}
       </section>
+      )}
 
       {/* ---------- Revoke ---------- */}
       {paired && (

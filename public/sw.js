@@ -1,4 +1,4 @@
-const CACHE = "pause-and-nourish-v39";
+const CACHE = "pause-and-nourish-v40";
 const CORE = [
   "/",
   "/check-in",
