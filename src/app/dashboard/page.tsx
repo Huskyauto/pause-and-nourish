@@ -87,6 +87,43 @@ function mode<T>(values: T[]): T | null {
   return best;
 }
 
+// One garden plant, drawn by growth stage: the first two pauses are
+// sprouts, then leafy stems, every third a flower (the app's pink +
+// gold, matching the Friendly Brain). Pure decoration — the section
+// text carries the meaning.
+function GardenPlant({ index }: { index: number }) {
+  const stage = index < 2 ? "sprout" : index % 3 === 2 ? "flower" : "leaf";
+  return (
+    <svg width="30" height="34" viewBox="0 0 24 26" aria-hidden="true" focusable="false">
+      <path d="M12 25 V12" stroke="#2f5d3a" strokeWidth="2" strokeLinecap="round" />
+      {stage === "sprout" && (
+        <>
+          <path d="M12 14 C8 14 6 11 6 8 C9 8 12 10 12 14 Z" fill="#5b8c5a" />
+          <path d="M12 12 C12 9 14 7 17 7 C17 10 15 12 12 12 Z" fill="#2f5d3a" />
+        </>
+      )}
+      {stage === "leaf" && (
+        <>
+          <path d="M12 16 C7 16 5 13 5 10 C9 10 12 12 12 16 Z" fill="#5b8c5a" />
+          <path d="M12 13 C12 9 15 7 19 7 C19 11 16 13 12 13 Z" fill="#2f5d3a" />
+          <path d="M12 20 C8 20 6 18 6 15 C9 15 12 17 12 20 Z" fill="#7fae7c" />
+        </>
+      )}
+      {stage === "flower" && (
+        <>
+          <path d="M12 18 C8 18 6 15 6 12 C9 12 12 14 12 18 Z" fill="#5b8c5a" />
+          <g fill="#d97b96">
+            <circle cx="12" cy="4.6" r="2.6" />
+            <circle cx="8.2" cy="8" r="2.6" />
+            <circle cx="15.8" cy="8" r="2.6" />
+          </g>
+          <circle cx="12" cy="7.6" r="1.8" fill="#f5b301" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const [entries, setEntries] = useState<JournalEntry[] | null>(null);
   const [nowMs, setNowMs] = useState(0);
@@ -270,6 +307,18 @@ export default function DashboardPage() {
   const all = entries ?? [];
   const thisWeek = all.filter((e) => new Date(e.createdAt).getTime() >= weekCutoff);
   const pausesTaken = all.filter((e) => e.pauseCompleted).length;
+
+  // The garden that only grows (locked Day 8 element): one plant per
+  // completed pause, all-time, whatever the choice after it was. It
+  // never wilts and never loses a plant; after an absence it says it
+  // kept your seat. Deterministic by index — same garden every render.
+  const gardenShown = Math.min(pausesTaken, 24);
+  const gardenExtra = pausesTaken - gardenShown;
+  const lastEntryMs = all.length
+    ? Math.max(...all.map((e) => new Date(e.createdAt).getTime()))
+    : null;
+  const gardenKeptSeat =
+    pausesTaken > 0 && lastEntryMs !== null && nowMs - lastEntryMs > 3 * 24 * 60 * 60 * 1000;
 
   const commonContext = mode(all.map((e) => e.context).filter((c): c is string => !!c));
   const commonHour = mode(all.map((e) => hourLabel(e.createdAt)));
@@ -479,6 +528,39 @@ export default function DashboardPage() {
             Early days — these counts are real, from your device. A few more check-ins and your
             patterns start showing up here.
           </p>
+        </section>
+      )}
+
+      {entries && all.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm" aria-label="Your garden">
+          <h2 className="font-semibold text-stone-900">Your garden</h2>
+          <p className="mt-2 leading-relaxed text-stone-600">
+            One new plant for every pause you finished — whatever you chose after it. This
+            garden only grows.
+          </p>
+          {pausesTaken === 0 ? (
+            <p className="mt-3 leading-relaxed text-stone-600">
+              No plants yet. Your first finished pause plants the first one.
+            </p>
+          ) : (
+            <>
+              <div className="mt-4 flex flex-wrap items-end gap-x-2 gap-y-3" aria-hidden="true">
+                {Array.from({ length: gardenShown }, (_, i) => (
+                  <GardenPlant key={i} index={i} />
+                ))}
+                {gardenExtra > 0 && (
+                  <span className="text-sm font-medium text-[#2f5d3a]">
+                    +{gardenExtra} more growing
+                  </span>
+                )}
+              </div>
+              {gardenKeptSeat && (
+                <p className="mt-3 leading-relaxed text-stone-600">
+                  It kept your seat while you were away.
+                </p>
+              )}
+            </>
+          )}
         </section>
       )}
 
