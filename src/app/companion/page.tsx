@@ -781,7 +781,7 @@ function MailboxPanel({ binding }: { binding: OwnerBinding }) {
 
   function viaWords(entry: MailboxFeedEntry): string {
     const via = entry.payload?.via;
-    if (via === "media-button") return " — from your earbud press";
+    if (via === "media-button") return " — from your headset press";
     if (via === "request") return " — from a cue request";
     return "";
   }

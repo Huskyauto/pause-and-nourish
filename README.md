@@ -73,7 +73,7 @@ Local-first. There is no hosted database, no account system, and no analytics.
 | **Muse Spark 1.3** (Meta Model API) | `/api/converse` | The in-the-moment brain: every conversational line, SOS opening, respawn line, and intake question is composed live by Muse Spark from the live situation plus the user's own material. |
 | **Muse Voice Transcribe** (Meta Model API) | `/api/transcribe` | The fallback ears: when the device offers no speech recognition of its own, an answer is recorded (mono WAV) and transcribed here. Most answers never touch it — device recognition serves first. |
 | **Muse Code** | build tool | This app was built with Muse Code during the hackathon window. |
-| **Muse Wonder** | — | **Not wired in the shipped build.** Reserved as the deeper tier for the weekly review (see Roadmap). No code in this repository calls it today. |
+| **Muse Wonder** | `muse-wonder-1.0` | The weekly review tier: the Statistics page's "Your weekly review" card sends a counts-and-patterns digest (never raw journal text) to `/api/review`, and Wonder answers in three fixed sections — what showed up, what helped, one focus for next week drawn from the user's own playbook. Wired and live-verified Nov 1. |
 | **SAM 3.1** | — | **Not in the shipped build.** Roadmap only: food-variety reflection. No code in this repository calls it today. |
 | **Muse Image** | — | Not used. |
 
@@ -123,11 +123,11 @@ npm test        # the companion-protocol proof suite (22 tests)
 
 **Deploy:** the production deployment is on Vercel, git-connected — pushes to `main` deploy automatically. The service worker cache name in `public/sw.js` (`pause-and-nourish-v33` at this writing) is the practical deploy marker: when it changes, the new build is live.
 
-**The companion page** (`/companion`) works today for pairing and status against the protocol module. With no native companion built yet, arming a session honestly reports **"Waiting for companion"** — the transport is Roadmap work, and the page will not pretend otherwise.
+**The companion page** (`/companion`) pairs with the native Android companion (source in `companion/`) two ways: against the protocol module on-device, and over the live mailbox — a small digest-only relay (Upstash KV) the companion polls for approvals, armed sessions, and cue requests, and posts tiny event notes back to (`cue.played` lands on this page). The full loop is verified end to end on the founder's phone (Nov 1): pair, approve, arm with the companion open, screen off, headset play press, cue plays, event lands. The page is honest about the ceremony's steps — the setup checklist at the top of the page is the gate-proven order — and while a live link is connected, the page quiets its older practice surfaces so the live panel is the one status a user reads.
 
 ## Project layout
 
-- `src/app/` — the routes: `page.tsx` (home), `talk/` (the conversation), `pause/` (SOS and the pause toolkit), `story/` + `story/interview/` (the spoken intake and its review page), `shield/` (calm-time setup: plan, places, risk windows, material slots), `dashboard/` (the reflection), `check-in/`, `support/`, `companion/`, and `api/` (`converse`, `transcribe`, `speak`).
+- `src/app/` — the routes: `page.tsx` (home), `talk/` (the conversation), `pause/` (SOS and the pause toolkit), `story/` + `story/interview/` (the spoken intake and its review page), `shield/` (calm-time setup: plan, places, risk windows, material slots), `dashboard/` (the reflection), `check-in/`, `support/`, `companion/`, and `api/` (`converse`, `transcribe`, `speak`, `review`, `mailbox`).
 - `src/lib/` — the working parts: `journal.ts` (on-device storage), `actions.ts` (the 46-move repertoire), `baseline.ts` (the second-brain baseline the prompts carry), `meta.ts` (Meta API client and model IDs), `speak.ts` / `recognize.ts` (the speech pipeline and recognition-first answers), `places.ts` / `riskWindows.ts` (on-device place labels and window math), `companion.ts` (the protocol module's storage adapter), plus the WAV and prompt helpers.
 - `src/components/` — `SecondBrain.tsx` (the Friendly Brain mascot) and small shared pieces.
 - `companion-protocol/` — the standalone pairing/credential/events module and its tests; its own `README.md` maps each guarantee to the code that keeps it.
@@ -135,8 +135,7 @@ npm test        # the companion-protocol proof suite (22 tests)
 
 ## Roadmap
 
-- **The native companion (Component B).** The protocol is shipped and tested; the transport is not built. A small Android companion would complete the pairing, receive armed sessions ("Second Brain Watch"), and answer an earbud press with the screen off — the one thing a PWA structurally cannot do.
-- **Muse Wonder weekly review + three-tier memory.** A weekly, deeper pass over the journal — what the brain has learned, what it should remember, what it should forget — with the memory shown to the user in a "what I remember about you" view they can correct.
+- **One-tap companion pairing.** The companion works and its loop is verified, but the pairing ceremony is a developer-grade handshake (carriers, an approval, arming while the companion is visible). Collapsing it to one tap — and carrying the setup checklist inside the companion app itself — is the first post-hackathon companion task.
 - **SAM 3.1 variety reflection.** Reflecting the variety in what a user eats, from their own journal — reflection only, never scoring.
 - **Accounts and sync** — post-hackathon, and only together with the consent machinery hosted data requires. The on-device design is the product's privacy foundation, not a placeholder.
 
