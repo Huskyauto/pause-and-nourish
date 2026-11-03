@@ -24,6 +24,7 @@ import { companionStore } from "@/lib/companion";
 import {
   approveMailbox,
   clearOwnerBinding,
+  revokeMailboxOnServer,
   denyMailbox,
   fetchOwnerEvents,
   fetchOwnerStatus,
@@ -674,7 +675,8 @@ export default function CompanionPage() {
           <h2 className="text-xl font-semibold text-stone-900">End this pairing</h2>
           <p className="mt-2 leading-relaxed text-stone-600">
             Revoking is the only thing that erases a pairing — the credential, the session, and
-            the event notes all go, and pairing again starts from the beginning.
+            the event notes all go, on this phone and on the companion link itself, and pairing
+            again starts from the beginning.
           </p>
           {!revokeArmed ? (
             <button
@@ -693,6 +695,12 @@ export default function CompanionPage() {
                 disabled={busy}
                 onClick={() =>
                   act(async () => {
+                    // Server first (2026-11-02): the mailbox revoke
+                    // is what actually retires the credential; the
+                    // local clears below tidy this browser. If the
+                    // server call fails, the error surfaces and the
+                    // local state stays as it was.
+                    if (binding) await revokeMailboxOnServer(binding);
                     await revokeCredential(companionStore);
                     clearOwnerBinding();
                     setBinding(null);

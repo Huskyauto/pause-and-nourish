@@ -685,8 +685,14 @@ export type ActionResponse = "accept" | "decline" | "other";
 export function parseActionResponse(text: string): ActionResponse {
   const t = words(text);
   if (
-    /\b(not now|no thanks|no thank you|skip( it)?|pass|later|not really|don't want|do not want|nah|nope)\b/.test(t) ||
-    /^\s*no\b/.test(t)
+    /\b(not now|no thanks|no thank you|skip( it)?|pass|later|not really|don't want|do not want|nah|nope|not a fan|not right now)\b/.test(t) ||
+    /^\s*no\b/.test(t) ||
+    // "Sure, but not right now" is a pass wearing a yes's clothes:
+    // a "but" after an agreement word hands the sentence to the
+    // decline side when what follows it declines (external review
+    // fix, 2026-11-02). "I'm not a fan of breathing exercises" now
+    // declines too — the bare word "breathing" used to accept it.
+    /\b(yes|yeah|sure|okay|ok)\b[^.]*\bbut\b[^.]*\b(not|no|later|skip|pass)\b/.test(t)
   ) {
     return "decline";
   }
@@ -719,6 +725,21 @@ export function parseOutcome(text: string): SessionOutcome | null {
     /^\s*no\b/.test(t)
   ) {
     return "work-on";
+  }
+  // Windowed negation (external review fix, 2026-11-02): the phrase
+  // list above only catches "not good" standing adjacent. "Not a
+  // good outcome" and "it wasn't good" slipped through and were
+  // recorded as good. A negation within three words before a
+  // good-side word means the answer belongs to the work-on side.
+  const tokens = t.trim().split(/\s+/);
+  const GOOD_WORDS = new Set(["good", "great", "helped", "helpful", "better", "calmer"]);
+  for (let i = 0; i < tokens.length; i++) {
+    if (!GOOD_WORDS.has(tokens[i])) continue;
+    for (let j = Math.max(0, i - 3); j < i; j++) {
+      if (/^(not|no|never)$/.test(tokens[j]) || /n't$/.test(tokens[j])) {
+        return "work-on";
+      }
+    }
   }
   if (
     /\b(helped|helpful|worked|good outcome|better|calmer|calm now|great|good)\b/.test(t) ||

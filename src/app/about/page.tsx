@@ -69,17 +69,47 @@ export default function AboutPage() {
 
       <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-stone-900">
-          Your words stay on this device
+          Your journal lives on this phone — here is what travels
         </h2>
         <p className="mt-2 leading-relaxed text-stone-600">
-          Your journal, your plan, your patterns, and your voice recordings live on this
-          phone — not on our servers; there is no account and no hosted copy of your diary.
-          Two things do travel, narrowly: your spoken answers are transcribed by a Meta AI
-          service (the words are kept; the audio is not), and the optional weekly review
-          sends counts and pattern summaries only — never your raw journal text. If you save
-          a place, its coordinates never leave this phone; only its name can be mentioned.
-          You can erase everything, any time, from the Delete everything section on the
-          Statistics page.
+          Your journal, your plan, your patterns, and your voice recordings are stored on
+          this phone. There is no account, and no copy of your diary sits on a server
+          waiting for you to log in. To work at all, some things do travel when you use
+          them:
+        </p>
+        <ul className="mt-2 list-disc space-y-2 pl-5 leading-relaxed text-stone-600">
+          <li>
+            When you talk, the words of the conversation — plus the plan and story
+            details a reply needs — go to Meta&apos;s AI service, which composes the
+            reply. Your spoken answers also go there to be turned into words. What
+            happens on Meta&apos;s side is governed by Meta&apos;s terms for its
+            developer services.
+          </li>
+          <li>
+            Each reply the app speaks aloud is sent as text to a voice service (Fish
+            Audio), which returns the audio.
+          </li>
+          <li>
+            If you ask for the weekly review, it is composed from counts, pattern
+            summaries, and up to five of the learnings you saved, in your own words —
+            those learnings travel with the request.
+          </li>
+          <li>
+            If you pair the optional companion app, pairing digests (scrambled codes,
+            never the codes themselves) and small event notes — &ldquo;cue
+            played&rdquo;, &ldquo;session armed&rdquo; — pass through a relay store so
+            the two devices can find each other. Your journal never does.
+          </li>
+          <li>
+            During the hackathon, this app runs on free Meta developer credits; the
+            terms for those services may allow content sent to the API to be used to
+            improve Meta&apos;s products.
+          </li>
+        </ul>
+        <p className="mt-2 leading-relaxed text-stone-600">
+          If you save a place, its coordinates never leave this phone; only its name can
+          be mentioned. You can erase everything on this device, any time, from the
+          Delete everything section on the Statistics page.
         </p>
       </section>
 

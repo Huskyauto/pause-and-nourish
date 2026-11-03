@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 import { META_WONDER_MODEL, MetaApiError, metaApiKey, metaChat } from "@/lib/meta";
 import { filterGeneratedLine } from "@/lib/spine";
+import { guardPublicRoute } from "@/lib/rateLimit";
 
 interface WeekDigest {
   weekLabel: string;
@@ -107,6 +108,10 @@ function digestPrompt(d: WeekDigest): string {
 }
 
 export async function POST(request: Request) {
+  // Public-route guard (2026-11-02): the review is the expensive
+  // call (Wonder), so its per-IP minute cap is the tightest.
+  const blocked = await guardPublicRoute(request, "review", 5);
+  if (blocked) return blocked;
   if (!metaApiKey()) {
     return NextResponse.json({ error: "meta_not_configured" }, { status: 500 });
   }
@@ -132,11 +137,21 @@ export async function POST(request: Request) {
   }
   // The spine filter is per-line by design (600-char cap); the
   // review is filtered paragraph by paragraph, and a review that
-  // loses its substance to the filter is not shipped.
+  // loses its substance to the filter is not shipped. The digest's
+  // own words are exempt from the filter (2026-11-02): the review's
+  // whole job is quoting the user's learnings back, and a learning
+  // containing a blocked word ("I felt guilty and ate anyway") used
+  // to gut the paragraph built around it.
+  const ownText = [
+    ...digest.templateLines,
+    ...digest.learnings,
+    ...digest.confirmedPatterns,
+    ...digest.needsNamed,
+  ].join("\n");
   const paragraphs = raw.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const kept: string[] = [];
   for (const p of paragraphs) {
-    const lines = p.split("\n").map((l) => filterGeneratedLine(l, "")).filter(Boolean);
+    const lines = p.split("\n").map((l) => filterGeneratedLine(l, "", ownText)).filter(Boolean);
     if (lines.length) kept.push(lines.join("\n"));
   }
   const review = kept.join("\n\n");

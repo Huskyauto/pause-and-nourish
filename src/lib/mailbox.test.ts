@@ -22,6 +22,7 @@ import {
   readOwnerEvents,
   registerPairing,
   renewCompanionCredential,
+  revokeMailbox,
 } from "./mailbox";
 import {
   generateExchangeCode,
@@ -132,6 +133,52 @@ describe("pairing over the mailbox", () => {
     await expect(
       exchangeRegisteredPairing(p.pairingId, { secret: p.secret, code: p.code }, later),
     ).rejects.toMatchObject({ code: "pairing_expired" });
+  });
+});
+
+describe("the registration gate and server revoke (2026-11-02)", () => {
+  it("refuses a stranger's registration over a live credential; the same owner may re-register", async () => {
+    const p = await paired();
+    const stranger = generateSecret("pn_own_");
+    await expect(
+      registerPairing({
+        pairingId: "pairing-test-0002",
+        secretDigest: await sha256Hex(generateSecret("pn_pair_")),
+        codeDigest: await sha256Hex(normalizeExchangeCode(generateExchangeCode())),
+        requestedScopes: SCOPES,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        ownerDigest: await sha256Hex(stranger),
+      }),
+    ).rejects.toMatchObject({ code: "owner_required" });
+    // The live pairing is untouched by the refused registration.
+    await expect(companionMailboxStatus(`Bearer ${p.token}`)).resolves.toMatchObject({
+      paired: true,
+    });
+    // The same owner starting a fresh ceremony still works.
+    await expect(
+      registerPairing({
+        pairingId: "pairing-test-0003",
+        secretDigest: await sha256Hex(generateSecret("pn_pair_")),
+        codeDigest: await sha256Hex(normalizeExchangeCode(generateExchangeCode())),
+        requestedScopes: SCOPES,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        ownerDigest: await sha256Hex(p.ownerKey),
+      }),
+    ).resolves.toMatchObject({ registered: true });
+  });
+
+  it("owner revoke wipes the server mailbox; a wrong key cannot", async () => {
+    const p = await paired();
+    await expect(revokeMailbox("pn_own_wrong")).rejects.toMatchObject({
+      code: "invalid_owner",
+    });
+    await expect(revokeMailbox(p.ownerKey)).resolves.toEqual({ revoked: true });
+    await expect(companionMailboxStatus(`Bearer ${p.token}`)).rejects.toMatchObject({
+      code: "unknown_token",
+    });
+    await expect(ownerMailboxStatus(p.ownerKey)).rejects.toMatchObject({
+      code: "invalid_owner",
+    });
   });
 });
 

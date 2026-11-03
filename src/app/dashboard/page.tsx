@@ -18,6 +18,7 @@ import {
   type WeeklyReview,
 } from "@/lib/journal";
 import { PAUSE_TOOLS } from "@/lib/tools";
+import { clearOwnerBinding } from "@/lib/mailboxClient";
 import {
   NEED_WORDS,
   confirmedPatterns,
@@ -145,6 +146,10 @@ export default function DashboardPage() {
 
   async function handleDeleteEverything() {
     await deleteEverything().catch(() => {});
+    // The companion owner key lives outside the journal stores
+    // (2026-11-02): "delete everything" clears it too, so no
+    // companion-link credential survives on this device.
+    clearOwnerBinding();
     setEntries([]);
     setDeleteStep("done");
   }

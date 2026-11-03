@@ -35,6 +35,22 @@ describe("matchesCrisis", () => {
     }
   });
 
+  it("matches the wordings added 2026-11-02 (external review list)", () => {
+    for (const text of [
+      "I want to be dead",
+      "I'd rather be dead than keep doing this",
+      "I can't go on",
+      "I cannot go on like this",
+      "I'm going to end it all",
+      "I've been thinking about ending it all",
+      "I don't want to be here anymore",
+      "I don't want to be alive",
+      "kms",
+    ]) {
+      expect(matchesCrisis(text), text).toBe(true);
+    }
+  });
+
   it("the signpost names the resource and the disclosure", () => {
     expect(CRISIS_SAY).toContain("988");
     expect(CRISIS_SAY).toContain("AI companion");

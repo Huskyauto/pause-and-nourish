@@ -35,6 +35,22 @@ const CRISIS_PHRASES = [
   "dont want to live",
   "no reason to live",
   "no reason to go on",
+  // Added 2026-11-02 (external review; Bob approved the list):
+  // common wordings the first list missed. Same smoke-alarm rule —
+  // an over-trigger costs a support card shown to someone who did
+  // not need it; a miss costs the signpost not firing at all.
+  "want to be dead",
+  "rather be dead",
+  "can't go on",
+  "cant go on",
+  "cannot go on",
+  "end it all",
+  "ending it all",
+  "don't want to be here anymore",
+  "dont want to be here anymore",
+  "don't want to be alive",
+  "dont want to be alive",
+  "kms",
 ];
 
 function normalize(text: string): string {

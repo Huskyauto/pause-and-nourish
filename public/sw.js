@@ -1,4 +1,4 @@
-const CACHE = "pause-and-nourish-v44";
+const CACHE = "pause-and-nourish-v45";
 const CORE = [
   "/",
   "/check-in",
@@ -39,8 +39,13 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(request, copy));
+        // Only successful responses are cached (2026-11-02): an
+        // error page cached under a good URL would be served back
+        // on the offline path as if it were the real page.
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+        }
         return response;
       })
       .catch(() => caches.match(request).then((hit) => hit || caches.match("/")))

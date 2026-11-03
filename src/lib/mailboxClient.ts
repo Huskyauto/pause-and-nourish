@@ -80,6 +80,16 @@ export async function approveMailbox(binding: OwnerBinding): Promise<void> {
   if (!res.ok) throw new Error(`The companion link didn't take the approval (${res.status}).`);
 }
 
+/** Wipe the SERVER mailbox (2026-11-02) — the revoke that counts. */
+export async function revokeMailboxOnServer(binding: OwnerBinding): Promise<void> {
+  const res = await fetch("/api/mailbox/owner/revoke", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ownerKey: binding.ownerKey }),
+  });
+  if (!res.ok) throw new Error(`The companion link didn't take the revoke (${res.status}).`);
+}
+
 export async function denyMailbox(binding: OwnerBinding): Promise<void> {
   try {
     await fetch(`/api/mailbox/pairings/${binding.pairingId}/deny`, {

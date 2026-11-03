@@ -52,6 +52,7 @@ import {
   type SessionOutcomeItem,
 } from "@/lib/actions";
 import { applyDueDirectness } from "../shield/ShieldDay4";
+import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
 
 // Talk It Through (Day 5; free-form revision, 2026-10-30): the
 // conversation SOS. There is no script anymore: Muse Spark (via
@@ -165,13 +166,17 @@ const UNAVAILABLE_LINE = "I can't reach the brain right now.";
 
 // Spoken-answer endpointing (Bob's live-test fix, 2026-10-31): a
 // recording turn ends when HE stops talking — after speech has been
-// heard, ~1.8 s of continuous quiet ends the turn automatically —
+// heard, ~1.2 s of continuous quiet ends the turn automatically —
 // never on a fixed short clock while he is mid-sentence (the old
 // 12-second cap cut him off mid-conversation). The hard ceiling only
 // bounds a turn that never goes quiet, and what was recorded by then
 // is transcribed like any other turn end, never discarded. The
 // ■ Done button stays as his manual override at all times.
-const ANSWER_SILENCE_MS = 1800;
+// (Retuned 1.8 s → 1.2 s on 2026-11-02 at Bob's direction: the whole
+// turn gap — endpointing, the brain's compose, the first spoken
+// sound — should stay inside about five seconds; endpointing is the
+// slice of that gap this constant controls.)
+const ANSWER_SILENCE_MS = 1200;
 const ANSWER_MAX_MS = 120000;
 // Auto-listen no-speech grace (latency build, 2026-10-31; retuned
 // the same evening from Bob's run-through): when the mic opens on
@@ -597,27 +602,58 @@ export default function TalkClient() {
     const confirmedTexts = await getPatterns()
       .then((ps) => confirmedPatterns(ps).map((p) => `${p.text} (${p.evidence})`))
       .catch(() => [] as string[]);
+    const body = JSON.stringify({
+      history: historyRef.current.slice(-24),
+      shieldPlan: plan,
+      profile: hasUserProfile(profileRef.current) ? profileRef.current : null,
+      directness: plan.directness ?? null,
+      recentJournal: recentRef.current,
+      driving: answersRef.current.driving,
+      localTime: { hour, partOfDay: partOfDayFor(hour) },
+      dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
+      riskWindow: computeRiskWindowState(plan, now),
+      ...(placeLabel ? { placeLabel } : {}),
+      ...(confirmedTexts.length ? { confirmedPatterns: confirmedTexts } : {}),
+      todayJournal: todayRef.current,
+      sessionOutcomes: sessionOutcomesRef.current,
+      event: pendingEventRef.current,
+    });
+    // One retry on a transient failure (external review fix,
+    // 2026-11-02): a network drop or a 5xx must not end the whole
+    // conversation — the honest unavailable state is for a brain
+    // that stays unreachable, not for one hiccup. A crisis signpost
+    // arrives as a 200 and is never retried. Each attempt is bounded
+    // at 45 s so a hung call cannot hang the session either.
+    const attempt = async (): Promise<Response> => {
+      const ctl = new AbortController();
+      const timer = window.setTimeout(() => ctl.abort(), 45000);
+      try {
+        return await fetch("/api/converse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: ctl.signal,
+        });
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
     try {
-      const res = await fetch("/api/converse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          history: historyRef.current.slice(-24),
-          shieldPlan: plan,
-          profile: hasUserProfile(profileRef.current) ? profileRef.current : null,
-          directness: plan.directness ?? null,
-          recentJournal: recentRef.current,
-          driving: answersRef.current.driving,
-          localTime: { hour, partOfDay: partOfDayFor(hour) },
-          dayType: now.getDay() === 0 || now.getDay() === 6 ? "weekend" : "weekday",
-          riskWindow: computeRiskWindowState(plan, now),
-          ...(placeLabel ? { placeLabel } : {}),
-          ...(confirmedTexts.length ? { confirmedPatterns: confirmedTexts } : {}),
-          todayJournal: todayRef.current,
-          sessionOutcomes: sessionOutcomesRef.current,
-          event: pendingEventRef.current,
-        }),
-      });
+      let res: Response | null = null;
+      for (let tryNum = 0; tryNum < 2 && !res; tryNum++) {
+        try {
+          const r = await attempt();
+          if (r.ok || r.status < 500 || tryNum === 1) {
+            res = r;
+          } else {
+            await new Promise((w) => setTimeout(w, 600));
+          }
+        } catch {
+          if (tryNum === 1) return null;
+          await new Promise((w) => setTimeout(w, 600));
+        }
+      }
+      if (!res) return null;
       if (!res.ok) {
         let code = "";
         try {
@@ -704,11 +740,28 @@ export default function TalkClient() {
   // transcript, background-parsed into the journal, note persisted.
   // Shared by the conversation loop and the action-proposal answer,
   // so both paths capture identically.
-  function ingestAnswer(raw: string) {
+  function ingestAnswer(raw: string, opts?: { capture?: boolean }) {
     setHeard(raw);
     historyRef.current.push({ role: "user", text: raw });
-    captureInBackground(raw);
+    // capture:false is for the closing answer (see closeSession):
+    // it marks the session, it is not new conversation data, and
+    // background-parsing it filed records the user never made.
+    if (opts?.capture !== false) captureInBackground(raw);
     persistTranscriptNote();
+  }
+
+  // The fixed signpost, delivered in the client when the browser-
+  // side crisis rule fires on words the server has not seen (the
+  // closing answer) or before a turn is ever sent up: support card
+  // up, the fixed line on screen and spoken. The caller ends the
+  // session right after — no auto-listen, no composed reply follows
+  // it (external review fix, 2026-11-02).
+  async function speakCrisisSignpost(): Promise<void> {
+    setSupportShown(true);
+    setCurrentLine(CRISIS_SAY);
+    historyRef.current.push({ role: "brain", text: CRISIS_SAY });
+    persistTranscriptNote();
+    await speakAloud(CRISIS_SAY);
   }
 
   // The driving gate's close: the same deferred ending wherever
@@ -805,12 +858,16 @@ export default function TalkClient() {
           let noSpeech = false;
           let heardSpeech = false;
           let meterTimer: number | null = null;
+          let maxTimer: number | null = null;
+          let noSpeechTimer: number | null = null;
           let audioCtx: AudioContext | null = null;
           const finish = () => {
             if (settled) return;
             settled = true;
             stopRecordingRef.current = null;
             if (meterTimer !== null) window.clearInterval(meterTimer);
+            if (maxTimer !== null) window.clearTimeout(maxTimer);
+            if (noSpeechTimer !== null) window.clearTimeout(noSpeechTimer);
             if (audioCtx) audioCtx.close().catch(() => {});
             stream.getTracks().forEach((t) => t.stop());
             const blob = chunks.length
@@ -871,12 +928,17 @@ export default function TalkClient() {
             // ■ Done button still bound the turn.
           }
           recorder.start();
-          setTimeout(() => stopRecordingRef.current?.(), ANSWER_MAX_MS);
+          // Both timers are stored and cleared in finish: an earlier
+          // version left the ceiling timer anonymous, and a stale
+          // timer from a finished turn could stop a LATER turn's
+          // recording mid-answer once the conversation ran past the
+          // ceiling (external review fix, 2026-11-02).
+          maxTimer = window.setTimeout(() => stopRecordingRef.current?.(), ANSWER_MAX_MS);
           if (noSpeechMs !== undefined) {
             // The same watchdog on a plain timer, for devices where
             // the level meter can't run: no speech heard at all by
             // the deadline still closes the auto-open quietly.
-            setTimeout(() => {
+            noSpeechTimer = window.setTimeout(() => {
               if (!settled && !heardSpeech) {
                 noSpeech = true;
                 stopRecordingRef.current?.();
@@ -1269,6 +1331,17 @@ export default function TalkClient() {
       persistTranscriptNote();
       await speakBrainLine(res.say);
       if (!aliveRef.current || sessionOverRef.current) return;
+      if (res.crisis) {
+        // The signpost ends the session: the fixed line has been
+        // spoken and the support card is up (converseTurn set it),
+        // and the mic does NOT reopen for a composed continuation
+        // (external review fix, 2026-11-02). The outcome ask is
+        // skipped and no background choice may route this ending.
+        backgroundChoiceRef.current = null;
+        outcomeAskedRef.current = true;
+        await closeSession(null, res.say);
+        return;
+      }
       if (res.done) {
         await closeSession(res.choice, res.say);
         return;
@@ -1289,6 +1362,18 @@ export default function TalkClient() {
         return;
       }
       ingestAnswer(raw);
+      if (matchesCrisis(raw)) {
+        // Browser-side signpost: the rule fires on his words before
+        // the turn is ever sent up, so the fixed line — never a
+        // composed reply — is what follows them (external review
+        // fix, 2026-11-02).
+        await speakCrisisSignpost();
+        if (!aliveRef.current || sessionOverRef.current) return;
+        backgroundChoiceRef.current = null;
+        outcomeAskedRef.current = true;
+        await closeSession(null, CRISIS_SAY);
+        return;
+      }
       if (answersRef.current.driving) {
         await drivingClose();
         return;
@@ -1338,7 +1423,19 @@ export default function TalkClient() {
         const raw = await captureAnswerText();
         if (!aliveRef.current) return;
         if (raw) {
-          ingestAnswer(raw);
+          // The closing answer is a MARK on the session, not new
+          // conversation data: it is never background-parsed (a
+          // "yes" here used to be filed as choice: eat — external
+          // review fix, 2026-11-02). It also never reaches the
+          // server, so the browser-side crisis rule is the only
+          // signpost it can get — and it runs before the outcome.
+          ingestAnswer(raw, { capture: false });
+          if (matchesCrisis(raw)) {
+            await speakCrisisSignpost();
+            backgroundChoiceRef.current = null;
+            finishFreeform(null, CRISIS_SAY);
+            return;
+          }
           const outcome = parseOutcome(raw);
           if (outcome) {
             updateEntry(entry.id, { sessionOutcome: outcome }).catch(() => {});

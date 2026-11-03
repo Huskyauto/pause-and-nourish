@@ -24,6 +24,7 @@ import { speakLine } from "@/lib/speak";
 import { computeRiskWindowState } from "@/lib/riskWindows";
 import { getPlaceLabel } from "@/lib/places";
 import SecondBrain from "@/components/SecondBrain";
+import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
 
 // Day 3 pause flow, voice-first:
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
@@ -170,6 +171,7 @@ export default function PauseClient() {
   const lastChoiceRef = useRef<Choice | null>(null);
   const [learningText, setLearningText] = useState("");
   const [learningSaved, setLearningSaved] = useState<string | null>(null);
+  const [learningCrisis, setLearningCrisis] = useState(false);
 
   const initRef = useRef(false);
 
@@ -518,6 +520,15 @@ export default function PauseClient() {
 
   async function saveLearning() {
     const text = learningText.trim();
+    if (text && matchesCrisis(text)) {
+      // The crisis rule runs on the typed learning too (external
+      // review fix, 2026-11-02): words like these are a disclosure,
+      // not a learning — they are never saved as one, and the
+      // signpost takes the screen instead.
+      setLearningCrisis(true);
+      void speakLine(CRISIS_SAY, momentVoice());
+      return;
+    }
     if (entry && text) {
       const updated = await updateEntry(entry.id, { learning: text }).catch(() => null);
       if (updated) setEntry(updated);
@@ -1017,13 +1028,45 @@ export default function PauseClient() {
         </div>
       )}
 
-      {phase === "learning" && (
+      {phase === "learning" && learningCrisis && (
+        <div className="mt-8">
+          <h2 className="text-center text-2xl font-bold text-stone-900">
+            That sounds bigger than a pause
+          </h2>
+          <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
+            {CRISIS_SAY}
+          </p>
+          <div className="mt-6 text-center">
+            <Link
+              href="/support"
+              className="inline-block rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+            >
+              Get support — 988 and more
+            </Link>
+            <p className="mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  clearSosGuard();
+                  setPhase("closed");
+                }}
+                className="text-sm font-medium text-stone-500 underline underline-offset-4 hover:text-stone-700"
+              >
+                Continue
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {phase === "learning" && !learningCrisis && (
         <div className="mt-8">
           <h2 className="text-center text-2xl font-bold text-stone-900">
             Is there one thing you&apos;d like Pause &amp; Nourish to remember?
           </h2>
           <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
-            One line, in your words. It stays on this device, attached to this moment.
+            One line, in your words. Saved on this phone, attached to this moment — and
+            shared with the AI in later conversations, so it can remember what you told it.
           </p>
           <textarea
             value={learningText}

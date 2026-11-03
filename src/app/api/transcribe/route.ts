@@ -7,10 +7,15 @@
 // (browser speech recognition, then a one-time type-in escape hatch).
 
 import { metaApiKey, metaTranscribe, MetaApiError } from "@/lib/meta";
+import { guardPublicRoute } from "@/lib/rateLimit";
 
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024; // a full 120-second answer at 16 kHz WAV is ≈3.8 MB; the cap leaves headroom
 
 export async function POST(request: Request) {
+  // Public-route guard (2026-11-02): same-origin browsers only,
+  // per-IP minute cap — this endpoint spends Meta credit per call.
+  const blocked = await guardPublicRoute(request, "transcribe", 20);
+  if (blocked) return blocked;
   if (!metaApiKey()) {
     return Response.json({ error: "meta_not_configured" }, { status: 500 });
   }
@@ -53,12 +58,10 @@ export async function POST(request: Request) {
     const text = await metaTranscribe(audio, mimeType);
     return Response.json({ text });
   } catch (err) {
-    if (err instanceof MetaApiError) {
-      return Response.json(
-        { error: err.message, detail: err.detail },
-        { status: err.status },
-      );
+    if (err instanceof MetaApiError && err.message === "meta_not_configured") {
+      return Response.json({ error: "meta_not_configured" }, { status: 500 });
     }
+    // The upstream error body stays server-side (2026-11-02).
     return Response.json({ error: "transcribe_failed" }, { status: 502 });
   }
 }

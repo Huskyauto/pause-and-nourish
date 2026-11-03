@@ -81,18 +81,26 @@ export interface ChatMessage {
 }
 
 // Muse chat completion (Spark by default; Wonder for the weekly
-// review). Returns the reply text (possibly empty).
+// review). Returns the reply text (possibly empty). The in-moment
+// model can be overridden with the META_CHAT_MODEL env var (an
+// explicit model argument — the weekly review's Wonder — always
+// wins over the env var), and callers may cap the output length:
+// a conversational reply is a sentence or two of JSON, and an
+// uncapped generation only adds tail latency (2026-11-02).
 export async function metaChat(
   messages: ChatMessage[],
-  model: string = META_CHAT_MODEL,
+  model?: string,
+  opts?: { maxTokens?: number },
 ): Promise<string> {
+  const resolvedModel = model ?? (process.env.META_CHAT_MODEL || META_CHAT_MODEL);
   const res = await metaFetch("/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model,
+      model: resolvedModel,
       messages,
       temperature: 0.4,
+      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
     }),
   });
   const raw = await res.text();

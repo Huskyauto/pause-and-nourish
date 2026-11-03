@@ -91,6 +91,15 @@ const URGE_WORDS: Record<string, number> = {
 };
 
 export function parseUrge(text: string): number | null {
+  // A number counts as an urge rating only when the answer is ABOUT
+  // the rating: a short answer (four words or fewer — "a four",
+  // "like a 3"), or one that names the urge ("my urge is a 4").
+  // Anything longer is conversation, and a stray number word in it
+  // ("it's one to work on") must never overwrite the recorded rating
+  // (external review fix, 2026-11-02).
+  const trimmed = text.trim();
+  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+  if (wordCount > 4 && !/\burge\b/i.test(trimmed)) return null;
   const t = words(text);
   const digit = t.match(/\b([1-5])\b/);
   if (digit) return Number(digit[1]);
@@ -132,9 +141,10 @@ export function parseNeed(text: string): NeedParse {
   else if (/\b(relief|relieve|let go|release)\b/.test(t)) need = "relief";
   else if (/\b(break|escape|get away|step away|away)\b/.test(t)) need = "escape";
   else if (/\b(fuel|energy|food actually|actually food)\b/.test(t)) need = "fuel";
-  // End of day with no clearer need named: the need underneath is
-  // almost always rest — lead with it (taxonomy note), window kept.
-  if (!need && riskWindow) need = "tired";
+  // End of day is a WINDOW, not a need: a need is recorded only when
+  // the user actually names one. An earlier version defaulted an
+  // end-of-day mention to "tired", which stored a guess as if the
+  // user had declared it — removed 2026-11-02 (external review fix).
   return { need, targetFood, window: riskWindow };
 }
 
@@ -142,7 +152,17 @@ export function parseChoice(text: string): FinalChoice | null {
   const t = words(text);
   if (/\b(delay|wait|later|ten minutes|10 minutes)\b/.test(t)) return "delay";
   if (/\b(swap|instead|something else|other thing)\b/.test(t)) return "swap";
-  if (/\b(eat|have it|yes|go ahead)\b/.test(t)) return "eat";
+  // Negation first: "I'm not going to eat it" is not an eat. A short
+  // window of words between the negation and the eating word is
+  // enough for the way people actually say it.
+  if (/(?:\b(?:not|never|no)\b|n't\b)[^.]{0,24}\b(?:eat|have it|go ahead)\b/.test(t)) return null;
+  // "eat" must be SAID. A bare "yes" is an answer to whatever was
+  // asked — often the closing question — and reading it as eating
+  // filed false journal entries and routed people who had not eaten
+  // to the respawn screen (external review fix, 2026-11-02). The
+  // brain's explicit choice signal and the SOS buttons remain the
+  // authoritative eat records.
+  if (/\b(eat|have it|go ahead)\b/.test(t)) return "eat";
   return null;
 }
 
@@ -247,12 +267,23 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /\bprescri(be|ption)\b/i,
 ];
 
-export function filterGeneratedLine(generated: string, fallback: string): string {
+export function filterGeneratedLine(generated: string, fallback: string, ownText?: string): string {
   const line = generated.trim();
   if (!line) return fallback;
   if (line.length > 600) return fallback;
+  // Own-words exemption (external review fix, 2026-11-02): the brain
+  // is TOLD to quote the user's own words back — their why line,
+  // their journal, their story. When a blocked word in the generated
+  // line is a word the user themselves used (ownText carries their
+  // turns, plan, and profile), the line is reflecting their words,
+  // not introducing fenced vocabulary, and that pattern does not
+  // block it. A blocked word the user never said still blocks.
+  const own = ownText?.toLowerCase() ?? "";
   for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(line)) return fallback;
+    const hit = line.match(pattern);
+    if (!hit) continue;
+    if (own && own.includes(hit[0].toLowerCase())) continue;
+    return fallback;
   }
   return line;
 }

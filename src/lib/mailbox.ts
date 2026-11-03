@@ -290,6 +290,26 @@ export async function registerPairing(
   }
   const m = core();
   const state = await loadState();
+  // Registration gate (2026-11-02): while a live credential exists,
+  // a new registration replaces it ONLY when it comes from the same
+  // owner (same owner digest). Registering used to supersede the
+  // previous identity unconditionally — so any page load holding a
+  // stale owner key, or anyone who found the app URL, could wipe a
+  // working pairing just by starting a new ceremony. The same owner
+  // re-registering (a fresh ceremony on their own phone) still
+  // works exactly as before. Recovery from a lost owner key is a
+  // deliberate server-side reset of the mailbox blob, never a
+  // silent overwrite.
+  if (
+    state.credential &&
+    !state.credential.revokedAt &&
+    m.ownerDigest !== ownerDigest
+  ) {
+    throw new CompanionError(
+      "owner_required",
+      "A live pairing already exists and this registration is not from its owner.",
+    );
+  }
   // A fresh ceremony supersedes the previous identity outright:
   // credential, session, and event log from an earlier pairing do
   // not carry into a new one. (Without this, a completed test
@@ -331,6 +351,26 @@ export async function denyRegisteredPairing(ownerKey: unknown): Promise<{ denied
   await denyPairing(core().store);
   await persist();
   return { denied: true };
+}
+
+/**
+ * Owner revoke (2026-11-02): wipes the SERVER mailbox — credential,
+ * session, feed, pending pairing, owner binding — not just the
+ * browser's copies. Until this existed, "Revoke pairing" cleared
+ * only the local protocol store while the server kept a live
+ * credential the companion could still use.
+ */
+export async function revokeMailbox(ownerKey: unknown): Promise<{ revoked: true }> {
+  await syncFromKv();
+  await requireOwner(ownerKey);
+  const m = core();
+  await m.store.clear();
+  m.feed = [];
+  m.seq = 0;
+  m.ownerDigest = null;
+  m.pairingId = null;
+  await persist();
+  return { revoked: true };
 }
 
 // ---------- Companion: poll & exchange ----------
@@ -544,6 +584,7 @@ const HTTP_BY_CODE: Record<string, number> = {
   missing_scope: 403,
   no_credential: 401,
   invalid_owner: 403,
+  owner_required: 403,
   invalid_request: 400,
 };
 
