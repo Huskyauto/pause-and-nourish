@@ -764,8 +764,7 @@ async function handleMoment(args: {
     // Honest unavailability — the toolkit runs in silence. The
     // upstream error body stays server-side (2026-11-02): it can
     // carry request detail the browser has no business seeing.
-    console.error("[moment-diag] metaChat threw:", err instanceof MetaApiError ? `${err.status} ${err.detail ?? ""}` : String(err));
-    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.status : -1 }, { status: 502 });
   }
   let say: string | null = null;
   const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
@@ -785,8 +784,7 @@ async function handleMoment(args: {
     say = generated.trim();
   }
   if (say === null) {
-    console.error("[moment-diag] empty generation, raw length:", generated.length, JSON.stringify(generated.slice(0, 200)));
-    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+    return Response.json({ error: "brain_unavailable", stage: "empty", rawLength: generated.length }, { status: 502 });
   }
   // The output filter guards this line like every other; a rejected
   // line is NOT replaced by anything canned — the moment goes silent.
@@ -794,8 +792,7 @@ async function handleMoment(args: {
   // quoting their why line back must not kill the line.
   const filtered = filterGeneratedLine(say, "", ownTextFor(args.plan, args.profile, []));
   if (!filtered) {
-    console.error("[moment-diag] line filtered out:", JSON.stringify(say.slice(0, 300)));
-    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+    return Response.json({ error: "brain_unavailable", stage: "filtered", sayLength: say.length }, { status: 502 });
   }
   return Response.json({ say: filtered, source: "meta" });
 }
