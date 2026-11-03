@@ -754,6 +754,10 @@ async function handleMoment(args: {
       content: `(The choice they just made: ${args.choice}.)`,
     });
   }
+  messages.push({
+    role: "user",
+    content: "(Now compose the one line for this moment, in the JSON shape described.)",
+  });
   let generated: string;
   try {
     generated = await metaChat(messages, undefined, { maxTokens: 1000 });
@@ -764,7 +768,7 @@ async function handleMoment(args: {
     // Honest unavailability — the toolkit runs in silence. The
     // upstream error body stays server-side (2026-11-02): it can
     // carry request detail the browser has no business seeing.
-    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.status : -1 }, { status: 502 });
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
   }
   let say: string | null = null;
   const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
@@ -784,7 +788,7 @@ async function handleMoment(args: {
     say = generated.trim();
   }
   if (say === null) {
-    return Response.json({ error: "brain_unavailable", stage: "empty", rawLength: generated.length }, { status: 502 });
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
   }
   // The output filter guards this line like every other; a rejected
   // line is NOT replaced by anything canned — the moment goes silent.
@@ -792,7 +796,7 @@ async function handleMoment(args: {
   // quoting their why line back must not kill the line.
   const filtered = filterGeneratedLine(say, "", ownTextFor(args.plan, args.profile, []));
   if (!filtered) {
-    return Response.json({ error: "brain_unavailable", stage: "filtered", sayLength: say.length }, { status: 502 });
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
   }
   return Response.json({ say: filtered, source: "meta" });
 }

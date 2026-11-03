@@ -93,16 +93,37 @@ export async function metaChat(
   opts?: { maxTokens?: number },
 ): Promise<string> {
   const resolvedModel = model ?? (process.env.META_CHAT_MODEL || META_CHAT_MODEL);
-  const res = await metaFetch("/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: resolvedModel,
-      messages,
-      temperature: 0.4,
-      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    }),
-  });
+  const send = () =>
+    metaFetch("/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: resolvedModel,
+        messages,
+        temperature: 0.4,
+        ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      }),
+    });
+  // One retry on a transient upstream failure (2026-11-02): Meta's
+  // API intermittently answers 502/503/429 on the hackathon tier,
+  // and a single retry after a short pause turns most of those into
+  // a slow success instead of a dead turn. Configuration errors
+  // (meta_not_configured) and other 4xx are not retried.
+  let res: Response;
+  try {
+    res = await send();
+  } catch (err) {
+    if (
+      err instanceof MetaApiError &&
+      (err.status === 429 || err.status >= 500) &&
+      err.message !== "meta_not_configured"
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      res = await send();
+    } else {
+      throw err;
+    }
+  }
   const raw = await res.text();
   let data: { choices?: { message?: { content?: unknown } }[] } = {};
   try {
