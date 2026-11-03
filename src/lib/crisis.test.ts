@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CRISIS_SAY, matchesCrisis } from "./crisis";
+import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "./crisis";
 
 describe("matchesCrisis", () => {
   it("matches explicit first-person crisis statements", () => {
@@ -54,5 +54,41 @@ describe("matchesCrisis", () => {
   it("the signpost names the resource and the disclosure", () => {
     expect(CRISIS_SAY).toContain("988");
     expect(CRISIS_SAY).toContain("AI companion");
+  });
+});
+
+describe("matchesEatingDisorder — the eating-disorder signpost (2026-11-02)", () => {
+  it("fires on explicit disclosures", () => {
+    for (const text of [
+      "I have an eating disorder",
+      "I'm bulimic and I hate it",
+      "honestly I am anorexic",
+      "I make myself throw up after I eat",
+      "last night I made myself throw up again",
+      "I've been starving myself all week",
+      "it's the binge and purge cycle again",
+      "I keep purging after eating",
+    ]) {
+      expect(matchesEatingDisorder(text), text).toBe(true);
+    }
+  });
+
+  it("does not fire on hunger slang, illness, or ordinary talk", () => {
+    for (const text of [
+      "I'm starving, what's for dinner",
+      "I threw up twice, I think it's the flu",
+      "I feel sick to my stomach tonight",
+      "the urge is a four right now",
+      "I ate too much at lunch and I feel gross",
+      "purging the junk drawer this weekend",
+    ]) {
+      expect(matchesEatingDisorder(text), text).toBe(false);
+    }
+  });
+
+  it("the fixed line names the ANAD helpline and the AI boundary", () => {
+    expect(ED_SAY).toContain("1-888-375-7767");
+    expect(ED_SAY).toContain("National Alliance for Eating Disorders");
+    expect(ED_SAY).toContain("I'm an AI companion, not a counselor");
   });
 });

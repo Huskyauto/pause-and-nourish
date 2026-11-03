@@ -66,6 +66,7 @@ interface IntakeResponse {
   voice?: unknown;
   captured?: unknown;
   crisis?: unknown;
+  ed?: unknown;
 }
 
 type Phase = "ready" | "busy" | "listening" | "unavailable" | "done";
@@ -421,7 +422,7 @@ export default function InterviewClient() {
       voiceRef.current = data.voice;
       setVoice(data.voice);
     }
-    if (data.crisis === true) setSupportShown(true);
+    if (data.crisis === true || data.ed === true) setSupportShown(true);
     const say = data.say.trim();
     historyRef.current = [...historyRef.current, { role: "brain", text: say }];
     setTurns(historyRef.current);

@@ -52,7 +52,7 @@ import {
   type SessionOutcomeItem,
 } from "@/lib/actions";
 import { applyDueDirectness } from "../shield/ShieldDay4";
-import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
+import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/crisis";
 
 // Talk It Through (Day 5; free-form revision, 2026-10-30): the
 // conversation SOS. There is no script anymore: Muse Spark (via
@@ -576,6 +576,9 @@ export default function TalkClient() {
     // True when the reply is the fixed crisis signpost (the route's
     // deterministic rule fired): the support card renders with it.
     crisis: boolean;
+    // Same, for the eating-disorder signpost: support card renders,
+    // and the session closes on the fixed line.
+    ed: boolean;
   }
 
   // One conversational turn: the whole transcript goes up, the brain's
@@ -671,6 +674,7 @@ export default function TalkClient() {
         choice?: unknown;
         action?: unknown;
         crisis?: unknown;
+        ed?: unknown;
       };
       if (typeof data.say !== "string" || !data.say.trim()) return null;
       // The turn went through — the lifecycle note was delivered.
@@ -685,8 +689,9 @@ export default function TalkClient() {
             : null,
         action: isGuidedActionKind(rawKind) ? rawKind : null,
         crisis: data.crisis === true,
+        ed: data.ed === true,
       };
-      if (reply.crisis) setSupportShown(true);
+      if (reply.crisis || reply.ed) setSupportShown(true);
       return reply;
     } catch {
       return null;
@@ -756,12 +761,12 @@ export default function TalkClient() {
   // up, the fixed line on screen and spoken. The caller ends the
   // session right after — no auto-listen, no composed reply follows
   // it (external review fix, 2026-11-02).
-  async function speakCrisisSignpost(): Promise<void> {
+  async function speakCrisisSignpost(line: string = CRISIS_SAY): Promise<void> {
     setSupportShown(true);
-    setCurrentLine(CRISIS_SAY);
-    historyRef.current.push({ role: "brain", text: CRISIS_SAY });
+    setCurrentLine(line);
+    historyRef.current.push({ role: "brain", text: line });
     persistTranscriptNote();
-    await speakAloud(CRISIS_SAY);
+    await speakAloud(line);
   }
 
   // The driving gate's close: the same deferred ending wherever
@@ -1331,7 +1336,7 @@ export default function TalkClient() {
       persistTranscriptNote();
       await speakBrainLine(res.say);
       if (!aliveRef.current || sessionOverRef.current) return;
-      if (res.crisis) {
+      if (res.crisis || res.ed) {
         // The signpost ends the session: the fixed line has been
         // spoken and the support card is up (converseTurn set it),
         // and the mic does NOT reopen for a composed continuation
@@ -1372,6 +1377,17 @@ export default function TalkClient() {
         backgroundChoiceRef.current = null;
         outcomeAskedRef.current = true;
         await closeSession(null, CRISIS_SAY);
+        return;
+      }
+      if (matchesEatingDisorder(raw)) {
+        // The eating-disorder signpost, same posture (2026-11-02):
+        // the fixed line, the support card, and the session ends —
+        // the food conversation does not continue past a disclosure.
+        await speakCrisisSignpost(ED_SAY);
+        if (!aliveRef.current || sessionOverRef.current) return;
+        backgroundChoiceRef.current = null;
+        outcomeAskedRef.current = true;
+        await closeSession(null, ED_SAY);
         return;
       }
       if (answersRef.current.driving) {
@@ -1434,6 +1450,12 @@ export default function TalkClient() {
             await speakCrisisSignpost();
             backgroundChoiceRef.current = null;
             finishFreeform(null, CRISIS_SAY);
+            return;
+          }
+          if (matchesEatingDisorder(raw)) {
+            await speakCrisisSignpost(ED_SAY);
+            backgroundChoiceRef.current = null;
+            finishFreeform(null, ED_SAY);
             return;
           }
           const outcome = parseOutcome(raw);

@@ -41,7 +41,7 @@
 import { metaApiKey, metaChat, MetaApiError } from "@/lib/meta";
 import { SECOND_BRAIN_BASELINE } from "@/lib/baseline";
 import { filterGeneratedLine, type PartOfDay } from "@/lib/spine";
-import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
+import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/crisis";
 import { guardPublicRoute } from "@/lib/rateLimit";
 import {
   MODALITY_REPERTOIRE,
@@ -1221,6 +1221,25 @@ export async function POST(request: Request) {
       choice: null,
       action: null,
       crisis: true,
+      source: "signpost",
+    });
+  }
+
+  // Eating-disorder signpost (2026-11-02, Bob approved the wording):
+  // the same deterministic posture — an explicit disclosure in the
+  // user's own words returns the one fixed line, and the food
+  // conversation ends for the session (the client closes on the ed
+  // flag exactly as it closes on the crisis flag).
+  if (lastUserTurn && matchesEatingDisorder(lastUserTurn.text)) {
+    if (mode === "intake") {
+      return Response.json({ say: ED_SAY, done: false, captured: null, ed: true, source: "signpost" });
+    }
+    return Response.json({
+      say: ED_SAY,
+      done: false,
+      choice: null,
+      action: null,
+      ed: true,
       source: "signpost",
     });
   }

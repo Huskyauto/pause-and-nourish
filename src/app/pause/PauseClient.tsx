@@ -24,7 +24,7 @@ import { speakLine } from "@/lib/speak";
 import { computeRiskWindowState } from "@/lib/riskWindows";
 import { getPlaceLabel } from "@/lib/places";
 import SecondBrain from "@/components/SecondBrain";
-import { CRISIS_SAY, matchesCrisis } from "@/lib/crisis";
+import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/crisis";
 
 // Day 3 pause flow, voice-first:
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
@@ -171,7 +171,7 @@ export default function PauseClient() {
   const lastChoiceRef = useRef<Choice | null>(null);
   const [learningText, setLearningText] = useState("");
   const [learningSaved, setLearningSaved] = useState<string | null>(null);
-  const [learningCrisis, setLearningCrisis] = useState(false);
+  const [learningSignpost, setLearningSignpost] = useState<string | null>(null);
 
   const initRef = useRef(false);
 
@@ -520,13 +520,14 @@ export default function PauseClient() {
 
   async function saveLearning() {
     const text = learningText.trim();
-    if (text && matchesCrisis(text)) {
-      // The crisis rule runs on the typed learning too (external
-      // review fix, 2026-11-02): words like these are a disclosure,
-      // not a learning — they are never saved as one, and the
-      // signpost takes the screen instead.
-      setLearningCrisis(true);
-      void speakLine(CRISIS_SAY, momentVoice());
+    if (text && (matchesCrisis(text) || matchesEatingDisorder(text))) {
+      // The signpost rules run on the typed learning too (external
+      // review fix, 2026-11-02; ED added the same evening): words
+      // like these are a disclosure, not a learning — they are never
+      // saved as one, and the matching fixed line takes the screen.
+      const line = matchesCrisis(text) ? CRISIS_SAY : ED_SAY;
+      setLearningSignpost(line);
+      void speakLine(line, momentVoice());
       return;
     }
     if (entry && text) {
@@ -1028,13 +1029,13 @@ export default function PauseClient() {
         </div>
       )}
 
-      {phase === "learning" && learningCrisis && (
+      {phase === "learning" && learningSignpost && (
         <div className="mt-8">
           <h2 className="text-center text-2xl font-bold text-stone-900">
             That sounds bigger than a pause
           </h2>
           <p className="mx-auto mt-3 max-w-md text-center leading-relaxed text-stone-600">
-            {CRISIS_SAY}
+            {learningSignpost}
           </p>
           <div className="mt-6 text-center">
             <Link
@@ -1059,7 +1060,7 @@ export default function PauseClient() {
         </div>
       )}
 
-      {phase === "learning" && !learningCrisis && (
+      {phase === "learning" && !learningSignpost && (
         <div className="mt-8">
           <h2 className="text-center text-2xl font-bold text-stone-900">
             Is there one thing you&apos;d like Pause &amp; Nourish to remember?
