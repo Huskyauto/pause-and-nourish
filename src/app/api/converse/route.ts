@@ -760,15 +760,14 @@ async function handleMoment(args: {
   });
   let generated: string;
   try {
-    generated = await metaChat(messages, undefined, { maxTokens: 1000 });
+    generated = await metaChat(messages);
   } catch (err) {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
     }
-    // TEMP diagnostic (2026-11-02, remove after): surface our own
-    // error taxonomy — the upstream HTTP status embedded in the
-    // MetaApiError message — never the upstream body.
-    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.message : String(err), detail: err instanceof MetaApiError ? err.detail?.slice(0, 400) : undefined }, { status: 502 });
+    // Honest unavailability — the toolkit runs in silence. The
+    // upstream error body stays server-side (2026-11-02).
+    return Response.json({ error: "brain_unavailable" }, { status: 502 });
   }
   let say: string | null = null;
   const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
@@ -1074,7 +1073,7 @@ async function handleIntake(history: ConverseTurn[]): Promise<Response> {
   }
   let generated: string;
   try {
-    generated = await metaChat(messages, undefined, { maxTokens: 1000 });
+    generated = await metaChat(messages);
   } catch (err) {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -1307,7 +1306,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const generated = await metaChat(messages, undefined, { maxTokens: 1000 });
+    const generated = await metaChat(messages);
     // Parse the structured reply defensively: strip code fences, take
     // the outermost JSON object. A reply that isn't JSON is treated as
     // a plain spoken line (still filtered, never done).

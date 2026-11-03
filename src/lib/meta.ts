@@ -84,9 +84,14 @@ export interface ChatMessage {
 // review). Returns the reply text (possibly empty). The in-moment
 // model can be overridden with the META_CHAT_MODEL env var (an
 // explicit model argument — the weekly review's Wonder — always
-// wins over the env var), and callers may cap the output length:
-// a conversational reply is a sentence or two of JSON, and an
-// uncapped generation only adds tail latency (2026-11-02).
+// wins over the env var). Callers may pass a maxTokens cap, but the
+// converse routes deliberately do NOT (2026-11-02): Muse Spark
+// spends completion tokens on hidden reasoning before any content,
+// and a capped call can burn the whole budget reasoning and return
+// content: null (finish_reason "length") — the moment route failed
+// exactly that way at a 300- and even a 1000-token cap. Uncapped is
+// the known-good setting; latency is the model's reasoning time,
+// addressed by model choice, not by caps.
 export async function metaChat(
   messages: ChatMessage[],
   model?: string,
