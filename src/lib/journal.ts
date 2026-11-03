@@ -112,6 +112,15 @@ export interface ShieldPlan {
   tomorrowScene?: string | null;
   witnessPlan?: string | null;
   kindSentence?: string | null;
+  // His daily lines (Day 9, "tell your brain"): short statements
+  // in his own words that he tells his brain every day, written at
+  // calm time on the shield page. MATERIAL like the slots above —
+  // the brain receives them in its context and may offer one back
+  // verbatim at calm moments; the tell-your-brain guided action
+  // speaks them as an exercise, one step per line. Optional:
+  // absent or empty = the practice is off and behavior is exactly
+  // what it was before the lines existed.
+  dailyLines?: string[] | null;
   // Day 4 additions — all optional; pre-Day-4 plans simply lack them.
   ifThen?: { when: string; then: string } | null; // approach-worded plan, user's words
   voiceChoice?: VoiceChoice | null; // second-brain voice: own / phone / later

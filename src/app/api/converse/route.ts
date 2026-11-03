@@ -151,7 +151,7 @@ Respond with ONLY a JSON object, no other text: {"say": "<the exact line to spea
 // re-proposed in the same conversation; a completed one is followed
 // by a plain "how does the urge sit now" — his declared number, the
 // same as the pause flow.
-function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean): string {
+function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean, hasLines: boolean): string {
   // Placement gate: calm-time entries (placement "calm" — the
   // for-later items) are NOT part of the offerable repertoire. They
   // never appear in this block, and validation below strips the kind
@@ -165,6 +165,9 @@ function guidedActionBlock(hasSwap: boolean, hasReplacement: boolean): string {
     }
     if (m.id === "replacement-line" && !hasReplacement) {
       note = " — NOT available right now: he has no thought pairs saved, so do not propose it";
+    }
+    if (m.id === "tell-your-brain" && !hasLines) {
+      note = " — NOT available right now: he has no daily lines saved, so do not propose it";
     }
     return `- "${m.id}" (${m.name}): fits ${fits}${note}`;
   }).join("\n");
@@ -311,6 +314,7 @@ function fullSystemPrompt(
   directness: Directness,
   hasSwap: boolean,
   hasReplacement: boolean,
+  hasLines: boolean,
   profile: UserProfile | null,
 ): string {
   if (!profile) {
@@ -319,7 +323,7 @@ function fullSystemPrompt(
     // example — this person's own words are the only facts.
     return `${systemPrompt(directness)}
 
-${guidedActionBlock(hasSwap, hasReplacement)}
+${guidedActionBlock(hasSwap, hasReplacement, hasLines)}
 
 ${personableNeutralBlock()}
 
@@ -336,7 +340,7 @@ FINAL WORD — THE FENCE GOVERNS, AND THIS PERSON'S OWN WORDS GOVERN THE EXAMPLE
   // ground truth, and the founder baseline rides as a template.
   return `${systemPrompt(directness)}
 
-${guidedActionBlock(hasSwap, hasReplacement)}
+${guidedActionBlock(hasSwap, hasReplacement, hasLines)}
 
 ${personableProfileBlock(profile)}
 
@@ -449,6 +453,11 @@ function coercePlan(raw: unknown): ShieldPlan | null {
     tomorrowScene: optStr(p.tomorrowScene, 600),
     witnessPlan: optStr(p.witnessPlan, 400),
     kindSentence: optStr(p.kindSentence, 300),
+    // His daily lines: short strings, braces stripped (a line is
+    // spoken text, never a template), empties dropped.
+    dailyLines: strList(p.dailyLines, 12, 160)
+      .map((l) => l.replace(/[{}]/g, "").trim())
+      .filter((l) => l.length > 0),
     ifThen,
     voiceChoice:
       p.voiceChoice === "own" || p.voiceChoice === "phone" || p.voiceChoice === "later"
@@ -529,6 +538,15 @@ function playbookContext(plan: ShieldPlan, recent: RecentJournalItem[]): string 
   if (kind) {
     lines.push(
       `\nHIS KIND SENTENCE FOR AFTER A SLIP — his own words, written at calm time for exactly that moment: "${kind}"\nNarrow use, exactly as he set it up: only right after he has eaten, when the moment is about what just happened — draw on it ONCE, inside the response you are already composing (quote it where it lands), then move to the reset: nothing starts over, next meal as normal. Never generate comfort language of your own around it, and never reach for it at any other time.`,
+    );
+  }
+  const dailyLines = (plan.dailyLines ?? [])
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 12);
+  if (dailyLines.length) {
+    lines.push(
+      `\nHIS DAILY LINES — short statements in his own words that he tells his brain every day, written at calm time: ${dailyLines.map((l) => `"${l}"`).join(" | ")}\nAt calm moments — starting the day, a check-in, an easy stretch — you may offer one back verbatim, the way you would hand him his why. In a hard moment, only when one truly fits, and his why and his plan come first. Never present a line as advice, and never add lines of your own to his list.`,
     );
   }
   if (recent.length) {
@@ -1289,9 +1307,12 @@ export async function POST(request: Request) {
   const hasReplacement = plan.thoughtPairs.some(
     (pair) => pair.negative.trim().length > 0 && pair.positive.trim().length > 0,
   );
+  // Same gate for tell-your-brain: it speaks his own written daily
+  // lines, so with none saved it is not offerable.
+  const hasLines = (plan.dailyLines ?? []).some((l) => l.trim().length > 0);
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement, profile) },
+    { role: "system", content: fullSystemPrompt(directness, hasSwap, hasReplacement, hasLines, profile) },
     { role: "user", content: momentContext(localTime, dayType, riskWindow, today, profile, placeLabel, confirmedPatterns) },
     { role: "user", content: playbookContext(plan, recent) },
   ];
@@ -1362,7 +1383,8 @@ export async function POST(request: Request) {
               isGuidedActionKind(rawKind) &&
               modalityPlacement(rawKind) === "moment" &&
               (rawKind !== "swap" || hasSwap) &&
-              (rawKind !== "replacement-line" || hasReplacement)
+              (rawKind !== "replacement-line" || hasReplacement) &&
+              (rawKind !== "tell-your-brain" || hasLines)
             ) {
               action = { kind: rawKind };
             }

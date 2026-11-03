@@ -87,6 +87,75 @@ function SlotField({
   );
 }
 
+function LinesField({
+  plan,
+  onUpdate,
+}: {
+  plan: ShieldPlan;
+  onUpdate: (next: ShieldPlan) => void;
+}) {
+  const saved = (plan.dailyLines ?? []).map((l) => l.trim()).filter((l) => l.length > 0);
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    // Braces are stripped: a line is spoken text, never a template.
+    const value = draft.replace(/[{}]/g, "").trim();
+    if (!value || saved.length >= 12) return;
+    onUpdate({ ...plan, dailyLines: [...saved, value] });
+    setDraft("");
+  };
+  return (
+    <div className="mt-8">
+      <h3 className="text-lg font-semibold text-stone-900">Your lines — tell your brain</h3>
+      <p className="mt-1 text-sm leading-relaxed text-stone-600">
+        Short statements you tell your brain every day, in your words — what you want it to hear from
+        you, written now while it&apos;s calm. In the morning your second brain can read them back to
+        you, one by one, and offer one when the day needs it. Up to twelve lines; each one short
+        enough to say in one breath.
+      </p>
+      {saved.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {saved.map((line, i) => (
+            <li
+              key={`${i}-${line}`}
+              className="flex items-start justify-between gap-3 rounded-xl border border-stone-300 bg-white p-3"
+            >
+              <span className="text-stone-900">{line}</span>
+              <button
+                type="button"
+                className={clearBtnClass}
+                onClick={() => onUpdate({ ...plan, dailyLines: saved.filter((_, j) => j !== i) })}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+          className={inputClass}
+          placeholder="e.g. One meal at a time — I know my plan."
+          maxLength={160}
+        />
+        <button
+          type="button"
+          className={saveBtnClass}
+          disabled={!draft.trim() || saved.length >= 12}
+          onClick={add}
+        >
+          Add
+        </button>
+      </div>
+      {saved.length > 0 && <p className="mt-2 text-sm text-stone-500">Saved — they&apos;re yours to hear back.</p>}
+    </div>
+  );
+}
+
 export function MaterialSlotsSection({
   plan,
   onUpdate,
@@ -97,7 +166,7 @@ export function MaterialSlotsSection({
   return (
     <div>
       <p className="mt-1 text-sm leading-relaxed text-stone-600">
-        Three things you can write now, while it&apos;s calm, in your own words. Each one waits for the
+        Some things you write now, while it&apos;s calm, in your own words. Each one waits for the
         moment it&apos;s for — your second brain will bring it back in its own way, inside what it&apos;s
         already saying to you. All optional. Leave any of them blank and nothing changes.
       </p>
@@ -131,6 +200,7 @@ export function MaterialSlotsSection({
         maxLength={300}
         rows={2}
       />
+      <LinesField plan={plan} onUpdate={onUpdate} />
     </div>
   );
 }

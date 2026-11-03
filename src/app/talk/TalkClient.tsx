@@ -1198,6 +1198,12 @@ export default function TalkClient() {
       for (const option of options) if (option.trim()) stocked.push(option.trim());
     }
     const pair = plan.thoughtPairs.find((p) => p.negative.trim() && p.positive.trim());
+    // His daily lines, if he saved any — the tell-your-brain run
+    // speaks them one step per line (see actionSteps). Braces are
+    // stripped so a line can never read as a template slot.
+    const linesText = (plan.dailyLines ?? [])
+      .map((l) => l.replace(/[{}]/g, "").trim())
+      .filter((l) => l.length > 0);
     const steps = actionSteps(kind, {
       swapText: swapEl?.text ?? stocked[0] ?? null,
       whyLine: plan.whyLine.trim() || null,
@@ -1213,6 +1219,7 @@ export default function TalkClient() {
       // picture-tomorrow run leads his scene (the {scene} fill)
       // instead of its generic middle steps.
       sceneText: plan.tomorrowScene?.trim() || null,
+      linesText: linesText.length ? linesText : null,
     });
     if (!steps.length) return;
     actionRanRef.current = true;

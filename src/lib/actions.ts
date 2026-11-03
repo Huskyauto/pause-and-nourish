@@ -79,7 +79,9 @@ export interface ModalityDef {
 // directive are entries 1–9, unchanged; entries 31–37 are the v1.1
 // delta — seven ADAPT entries fetched from AI-BUDDY's self_care.py
 // in the GitHub backup; entries 38–46 are the v1.2 delta — the nine
-// gap-check candidates (run-the-movie … kind-sentence).
+// gap-check candidates (run-the-movie … kind-sentence). Entry 47
+// (tell-your-brain) is the Day 9 addition (2026-11-03), spliced
+// after one-word; its source line carries its provenance.
 // EXCLUDE entries from the catalog never appear here. The table
 // grows by data, never by new conversation code.
 export const MODALITY_REPERTOIRE: ModalityDef[] = [
@@ -353,6 +355,13 @@ export const MODALITY_REPERTOIRE: ModalityDef[] = [
     "source": "AI-BUDDY self_care.py (Intention Setting, fetched from the GitHub backup in v1.1) — ADAPTED: a calm-time morning arming rep; the word he declares becomes a spoken fill the brain can deal back, like his why line",
   },
   {
+    "id": "tell-your-brain",
+    "name": "Tell your brain",
+    "situations": ["morning arming", "calm time — he wants to hear his own lines back", "starting the day on purpose", "a setup rep, never an in-the-moment lead"],
+    "steps": [{ "say": "Your lines — the ones you chose to tell your brain. Here they are, in your words.", "seconds": 3 }, { "say": "{line}", "seconds": 6 }, { "say": "That's today's feed. Say one of them back to me, out loud.", "seconds": 12 }],
+    "source": "Daily self-statements practice — Bob's find, 2026-11-03 (a published note by Dr. Lee Warren on telling your brain daily lines); ADAPTED in our words: the practice only — none of his lines or wording ship anywhere in this app; the lines spoken are the user's own, from his Shield Plan daily lines",
+  },
+  {
     "id": "run-the-movie",
     "name": "Run the whole movie",
     "situations": ["a live urge with a named food", "a justification script running — 'just this once'", "urge 3-5", "evening at home", "right after what he stocked to have instead was declined"],
@@ -475,6 +484,12 @@ export interface ActionContext {
   // generic scene steps (see actionSteps). Null when he has saved
   // no scene; the action then leads its generic form, unchanged.
   sceneText: string | null;
+  // His daily lines (tell-your-brain), verbatim from his plan —
+  // actionSteps splices one spoken step per line between that
+  // entry's opening and closing steps. Null when he has saved no
+  // lines; the action then materializes to no steps and does not
+  // run, exactly like a swap with nothing stocked.
+  linesText: string[] | null;
 }
 
 // His declared needs as spoken phrases, for the `{need}` fill — the
@@ -550,15 +565,29 @@ export function actionSteps(kind: GuidedActionKind, ctx: ActionContext): ActionS
   }
   // A swap with nothing stocked is not an action — no steps, no run.
   if (def.id === "swap" && !ctx.swapText) return [];
+  // A lines run with no lines saved is not an action either.
+  if (def.id === "tell-your-brain" && !(ctx.linesText && ctx.linesText.length)) return [];
   // picture-tomorrow with his scene saved: the run leads HIS
   // picture — the catalog's opening step, then his scene as one
   // step (the {scene} fill), then the closing step. The generic
   // middle steps stand down. With no scene saved, the entry's own
   // steps run exactly as cataloged.
+  // tell-your-brain with lines saved: the run leads HIS lines —
+  // the entry's opening step, one spoken step per line (braces
+  // stripped, so a line can never read as a template slot), then
+  // the closing step. The catalog's {line} step stands down.
   const defSteps =
     def.id === "picture-tomorrow" && ctx.sceneText
       ? [def.steps[0], { say: "{scene}", seconds: 30 }, def.steps[def.steps.length - 1]]
-      : def.steps;
+      : def.id === "tell-your-brain" && ctx.linesText && ctx.linesText.length
+        ? [
+            def.steps[0],
+            ...ctx.linesText.map(
+              (line): RepertoireStep => ({ say: line.replace(/[{}]/g, "").trim(), seconds: 6 }),
+            ),
+            def.steps[def.steps.length - 1],
+          ]
+        : def.steps;
   const passes = Math.max(1, def.repeat ?? 1);
   const steps: ActionStep[] = [];
   for (let pass = 0; pass < passes; pass++) {
