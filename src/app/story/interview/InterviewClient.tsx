@@ -13,7 +13,7 @@ import {
 import { createSpeechPipeline, type SpeechPipeline } from "@/lib/speak";
 import { recognizeOnce, speechRecognitionAvailable } from "@/lib/recognize";
 import { transcribeBlob } from "@/lib/wav";
-import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
+import SecondBrain, { secondBrainCaption, type SecondBrainState } from "@/components/SecondBrain";
 
 // "Your story" as a conversation (Bob's ruling, 2026-10-31): the
 // brain asks one question at a time out loud, the user answers out
@@ -471,7 +471,7 @@ export default function InterviewClient() {
       )}
       {(phase === "busy" || phase === "listening") && (
         <div className="mb-4 flex justify-center">
-          <SecondBrain state={brainState} />
+          <SecondBrain state={brainState} caption={secondBrainCaption(brainState)} />
         </div>
       )}
       {turns.length > 0 && (

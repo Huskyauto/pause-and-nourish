@@ -574,7 +574,7 @@ export default function PauseClient() {
           />
           {sosThinking && (
             <div className="mt-5">
-              <SecondBrain state="thinking" size={96} />
+              <SecondBrain state="thinking" size={96} caption="Composing your pause…" />
             </div>
           )}
           <p className="mt-8 max-w-lg text-3xl font-bold leading-snug text-stone-900">

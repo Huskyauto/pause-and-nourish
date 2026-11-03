@@ -38,7 +38,7 @@ import { createSpeechPipeline, speakLineChecked, type SpeechPipeline } from "@/l
 import { recognizeOnce, speechRecognitionAvailable } from "@/lib/recognize";
 import { computeRiskWindowState } from "@/lib/riskWindows";
 import { getPlaceLabel } from "@/lib/places";
-import SecondBrain, { type SecondBrainState } from "@/components/SecondBrain";
+import SecondBrain, { secondBrainCaption, type SecondBrainState } from "@/components/SecondBrain";
 import {
   NEED_SPOKEN,
   OUTCOME_QUESTION,
@@ -1546,7 +1546,7 @@ export default function TalkClient() {
     <div className="mt-10">
       <section className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
         <div className="mb-3 flex justify-center">
-          <SecondBrain state={brainState} />
+          <SecondBrain state={brainState} caption={secondBrainCaption(brainState)} />
         </div>
         <p className="text-2xl font-semibold leading-snug text-stone-900" aria-live="polite">
           {currentLine || "…"}
