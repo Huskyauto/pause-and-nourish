@@ -10,6 +10,8 @@ Built for the **Meta Global AI Developer Hackathon** (October 26 – November 4,
 
 **Live demo:** https://pause-and-nourish.vercel.app
 
+**Judging this project?** Three doors in: the live demo (no login — a fresh browser gets the new-user path, because the founder's real data lives only on his phone), [MODALITIES.md](MODALITIES.md) (all 47 guided moves and the map of which move fits which moment), and the "By the numbers" and testing sections below (80 automated tests, `npm test`). One thing to know before you explore: there are no scripted responses in this app to find — every line it speaks is composed live by Muse Spark 1.3, from the user's own words.
+
 ---
 
 ## The loop
