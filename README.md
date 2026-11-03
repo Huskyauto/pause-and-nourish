@@ -103,6 +103,7 @@ Meta's Model API offers **no text-to-speech endpoint**, so the app's spoken voic
 
 - **Every spoken line is composed live by Muse Spark. Fish only gives it a voice.** There are no canned responses and no scripted question lists anywhere in the live flows.
 - For the founder's build, that voice is **his own cloned voice** — "Experienced Male Narrator" by Robert Washburn — used with his consent. A new user instead picks a neutral stock voice (female or male) during story intake; the founder's clone is never used for anyone else.
+- **Fish Audio is not a Meta service.** It is used only as a renderer — every word it speaks was composed by Muse Spark 1.3.
 - **The one recorded element in the app** is the user's own **reset line**: a sentence the user records at calm time, in their own voice, played back inside the guided reset step after they choose to eat. It is an exercise instrument — pacing and wording must be exact and repeatable — and it is the deliberate, single exception to "nothing pre-recorded."
 - Speech is delivered sentence-first with the rest prepared behind it, so a long reply starts talking quickly. If a Fish call fails for a chunk, the phone's own voice covers that chunk.
 

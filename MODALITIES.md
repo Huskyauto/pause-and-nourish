@@ -1,9 +1,10 @@
 # Pause & Nourish — Modality & Intervention Catalog
 
-**Version:** v1.0 — 2026-11-03
+**Version:** v1.1 — 2026-11-03
 **Status:** Submission document. Describes the shipped system at SW v47 (commit `ee2143c`). Every entry below is generated from the live repertoire data in `src/lib/actions.ts` — names, fits, and gates are the app's own, not marketing copy.
 
 ## Changelog
+- v1.1 (2026-11-03): Selection note added (why 47 of the 56 catalog entries shipped), from Meta AI's final review; only the verified reasons are stated.
 - v1.0 (2026-11-03): Initial catalog, extracted from the shipped v47 repertoire (47 moves), the situation-ranking table (25 moment types), and the intervention surfaces around them.
 
 ## How the system works
@@ -102,6 +103,8 @@ Preference order, from the shipped situation-ranking table. The user's session r
 | 47 | One kind sentence | Just ate / a slip happened; shame risk; the spiral that turns one episode into a lost day — the user's own calm-time sentence, spoken once, then the reset |
 
 **Provenance.** Moves 1–46 were selected from a 56-entry modality catalog (v1.2) mined from the founder's own earlier apps (AI-BUDDY, MetaBalance), the distilled method layer of his program research, and his 218-video journey knowledge base, plus a bounded gap-check — each entry in `src/lib/actions.ts` carries its own source line. Move 47 (Tell your brain) was added on Day 9, adapted from a published daily self-statements practice; only the practice was adopted — the lines spoken are always the user's own.
+
+**Selection note.** Not every catalog entry shipped. The protocol regimens — a user's vitamin, mineral, lotion, and detox routines — are held out of the in-the-moment repertoire by design: they belong to the calm-time playbook layer, as each user's own list, and the app never recommends them. The rest of the gap is selection made during distillation — the 47 that shipped are the ones that fit a 90-second, voice-led moment.
 
 ## 3. Around the moves — the rest of the intervention system
 
