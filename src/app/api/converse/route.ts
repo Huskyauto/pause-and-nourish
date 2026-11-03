@@ -756,7 +756,7 @@ async function handleMoment(args: {
   }
   let generated: string;
   try {
-    generated = await metaChat(messages, undefined, { maxTokens: 300 });
+    generated = await metaChat(messages, undefined, { maxTokens: 1000 });
   } catch (err) {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -1070,7 +1070,7 @@ async function handleIntake(history: ConverseTurn[]): Promise<Response> {
   }
   let generated: string;
   try {
-    generated = await metaChat(messages, undefined, { maxTokens: 400 });
+    generated = await metaChat(messages, undefined, { maxTokens: 1000 });
   } catch (err) {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
@@ -1303,7 +1303,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const generated = await metaChat(messages, undefined, { maxTokens: 300 });
+    const generated = await metaChat(messages, undefined, { maxTokens: 1000 });
     // Parse the structured reply defensively: strip code fences, take
     // the outermost JSON object. A reply that isn't JSON is treated as
     // a plain spoken line (still filtered, never done).
