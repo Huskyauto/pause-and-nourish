@@ -768,7 +768,7 @@ async function handleMoment(args: {
     // TEMP diagnostic (2026-11-02, remove after): surface our own
     // error taxonomy — the upstream HTTP status embedded in the
     // MetaApiError message — never the upstream body.
-    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.message : String(err) }, { status: 502 });
+    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.message : String(err), detail: err instanceof MetaApiError ? err.detail?.slice(0, 400) : undefined }, { status: 502 });
   }
   let say: string | null = null;
   const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
