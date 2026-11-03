@@ -1,13 +1,18 @@
 // Fish Audio voice-out (Bob's call, 2026-10-29): the app sends a line of
-// text; this route — server-side only — hands it to Fish with Bob's API
-// key and returns his own cloned narrator voice as audio. The key never
-// reaches the browser, and the speaking voice lives behind this single
-// endpoint, so a future Meta voice-out could replace Fish in one change.
+// text; this route — server-side only — hands it to Fish with the API
+// key and returns the founder's own cloned narrator voice as audio.
+// The key never reaches the browser, and the speaking voice lives
+// behind this single endpoint, so a future Meta voice-out could
+// replace Fish in one change.
+
+import { guardPublicRoute } from "@/lib/rateLimit";
 
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
-// Bob's Fish voice, "Experienced Male Narrator" — a public model ID, not
-// a secret. FISH_VOICE_ID in the environment overrides it when set.
-const DEFAULT_VOICE_ID = "675fecd02fcc4ad28cd84ca61501ca3e";
+// The founder's Fish voice ID lives ONLY in the FISH_VOICE_ID
+// environment variable (2026-11-02: it used to be a constant in this
+// file, which put a personal identifier in the public repo). With
+// no env var set, the founder path honestly reports itself
+// unconfigured instead of falling back to a hard-coded voice.
 // Neutral stock voices for story-intake users (Bob's ruling,
 // 2026-10-31): a new user has no clone of their own, so they pick one
 // of these at intake — broadly neutral Fish public-library voices,
@@ -23,6 +28,10 @@ const STOCK_VOICE_IDS = {
 const MAX_TEXT = 300;
 
 export async function POST(request: Request) {
+  // Public-route guard (2026-11-02): same-origin browsers only,
+  // per-IP minute cap — this endpoint spends Fish credit per call.
+  const blocked = await guardPublicRoute(request, "speak", 60);
+  if (blocked) return blocked;
   let text = "";
   let voice: "female" | "male" | null = null;
   try {
@@ -46,8 +55,12 @@ export async function POST(request: Request) {
     return Response.json({ error: "voice_not_configured" }, { status: 500 });
   }
   // A voice pick means an intake user: speak in their neutral stock
-  // voice. No voice pick = the founder path, unchanged.
-  const voiceId = voice ? STOCK_VOICE_IDS[voice] : process.env.FISH_VOICE_ID || DEFAULT_VOICE_ID;
+  // voice. No voice pick = the founder path, whose voice ID comes
+  // from the environment only.
+  const voiceId = voice ? STOCK_VOICE_IDS[voice] : process.env.FISH_VOICE_ID;
+  if (!voiceId) {
+    return Response.json({ error: "voice_not_configured" }, { status: 500 });
+  }
 
   let fish: Response;
   try {
