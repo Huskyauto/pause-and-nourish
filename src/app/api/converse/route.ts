@@ -765,10 +765,10 @@ async function handleMoment(args: {
     if (err instanceof MetaApiError && err.message === "meta_not_configured") {
       return Response.json({ error: "meta_not_configured" }, { status: 500 });
     }
-    // Honest unavailability — the toolkit runs in silence. The
-    // upstream error body stays server-side (2026-11-02): it can
-    // carry request detail the browser has no business seeing.
-    return Response.json({ error: "brain_unavailable" }, { status: 502 });
+    // TEMP diagnostic (2026-11-02, remove after): surface our own
+    // error taxonomy — the upstream HTTP status embedded in the
+    // MetaApiError message — never the upstream body.
+    return Response.json({ error: "brain_unavailable", stage: "throw", upstream: err instanceof MetaApiError ? err.message : String(err) }, { status: 502 });
   }
   let say: string | null = null;
   const jsonText = generated.replace(/```(?:json)?/gi, "").trim();
