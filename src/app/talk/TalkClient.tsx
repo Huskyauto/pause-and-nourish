@@ -177,6 +177,12 @@ const UNAVAILABLE_LINE = "I can't reach the brain right now.";
 // sound — should stay inside about five seconds; endpointing is the
 // slice of that gap this constant controls.)
 const ANSWER_SILENCE_MS = 1200;
+// sessionStorage key marking "a Talk session ended on this page"
+// (2026-11-03): the page's state survives leaving and returning, so
+// without the stamp a finished conversation greets him again on
+// every return. The mount effect reads it on (re-)entry and resets
+// to a fresh start; an in-progress conversation never sets it.
+const TALK_COMPLETED_KEY = "pn_talk_completed_v1";
 const ANSWER_MAX_MS = 120000;
 // Auto-listen no-speech grace (latency build, 2026-10-31; retuned
 // the same evening from Bob's run-through): when the mic opens on
@@ -376,7 +382,24 @@ export default function TalkClient() {
 
   useEffect(() => {
     aliveRef.current = true;
+    // (Re-)entry after a completed session resets to a fresh start
+    // (Bob's run-through, 2026-11-03): this effect re-runs when a
+    // preserved page is shown again, and the pageshow path covers a
+    // back/forward-cache restore, where effects do not re-run.
+    const resetIfCompleted = () => {
+      try {
+        if (sessionStorage.getItem(TALK_COMPLETED_KEY) === "1") resetSession();
+      } catch {
+        // Storage unavailable — the finished screen's own button still resets.
+      }
+    };
+    resetIfCompleted();
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resetIfCompleted();
+    };
+    window.addEventListener("pageshow", onPageShow);
     return () => {
+      window.removeEventListener("pageshow", onPageShow);
       aliveRef.current = false;
       if (brainReadyTimerRef.current !== null) {
         window.clearTimeout(brainReadyTimerRef.current);
@@ -392,6 +415,22 @@ export default function TalkClient() {
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  // The completion stamp the mount effect reads: set the moment a
+  // session ends (finished or unavailable), cleared whenever a
+  // conversation is live or the page is at its fresh start — so
+  // only a RETURN to an ended session ever triggers the reset.
+  useEffect(() => {
+    try {
+      if (phase === "finished" || phase === "unavailable") {
+        sessionStorage.setItem(TALK_COMPLETED_KEY, "1");
+      } else {
+        sessionStorage.removeItem(TALK_COMPLETED_KEY);
+      }
+    } catch {
+      // Storage unavailable — the reset-on-return simply won't fire.
+    }
+  }, [phase]);
 
   // ---------- speech out ----------
 
@@ -1502,6 +1541,61 @@ export default function TalkClient() {
     setPhase("finished");
   }
 
+  // Back to a fresh start (2026-11-03): every trace of the ended
+  // session cleared — transcript, captures, closing state — and the
+  // page back at "ready", exactly as if it had just been opened.
+  // Fired automatically when he returns to Talk after a session
+  // ended (the mount effect reads the completion stamp), and by the
+  // finished screen's own "Start another talk" button.
+  function resetSession() {
+    try {
+      sessionStorage.removeItem(TALK_COMPLETED_KEY);
+    } catch {
+      // Nothing to clear.
+    }
+    pipelineRef.current?.cancel();
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      // Nothing to cancel.
+    }
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+      } catch {
+        // Already stopped.
+      }
+      audioRef.current = null;
+    }
+    sessionOverRef.current = false;
+    closingRef.current = false;
+    actionAbortRef.current = false;
+    actionRanRef.current = false;
+    outcomeAskedRef.current = false;
+    pendingEventRef.current = null;
+    historyRef.current = [];
+    answersRef.current = { ...EMPTY_ANSWERS };
+    backgroundChoiceRef.current = null;
+    bitsRef.current = "";
+    entryRef.current = null;
+    freeformRef.current = false;
+    setHeard("");
+    setStatus("");
+    setCurrentLine("");
+    setPlanElements([]);
+    setFinishKind(null);
+    setClosingLine("");
+    setSupportShown(false);
+    setCaptureMode("idle");
+    setAutoListen(false);
+    setAwaitingTap(false);
+    setTextDraft("");
+    setActionRunning(false);
+    setRunningActionLabel("");
+    brainIdle();
+    setPhase("ready");
+  }
+
   // The user's own end: stop any capture, cut any guided action
   // short, then close through the same path as every other ending —
   // which includes the outcome question, so his record gets its mark.
@@ -1602,6 +1696,16 @@ export default function TalkClient() {
             </li>
           </ul>
         </section>
+        <button
+          type="button"
+          onClick={() => {
+            resetSession();
+            void begin();
+          }}
+          className="w-full rounded-full bg-[#2f5d3a] px-8 py-4 text-lg font-semibold text-white shadow-sm transition hover:bg-[#274c30]"
+        >
+          Start another talk
+        </button>
         <Link href="/" className="text-center font-medium text-[#2f5d3a] underline underline-offset-4">
           Back home
         </Link>
