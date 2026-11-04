@@ -9,7 +9,7 @@
 
 ## How the system works
 
-- In a live conversation, the second brain (Muse Spark 1.3) learns the shape of the moment from what the user declares — where they are, body hunger or the urge, how strong, what they need — and may propose **one** guided move. If the user says yes, the app leads it step by step, out loud.
+- In a live conversation, the second brain (Muse Spark 1.2) learns the shape of the moment from what the user declares — where they are, body hunger or the urge, how strong, what they need — and may propose **one** guided move. If the user says yes, the app leads it step by step, out loud.
 - **A move's steps and pacing are fixed data — an exercise is an instrument.** The model chooses *which* move and composes everything said around it; it never writes step text, never invents a technique, and never offers a move that isn't in this catalog.
 - **Several moves speak the user's own words back** — their why line, their written reframe pairs, their kind sentence, their word for today, their daily lines. A move like that doesn't exist until the user writes the words at calm time; the route enforces this (no words saved → the move is not offerable).
 - The user's own session record outranks the moment map below: a move they marked "good" rises to the front for that kind of moment; one marked "to work on" drops below its alternates.

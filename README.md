@@ -10,7 +10,7 @@ Built for the **Meta Global AI Developer Hackathon** (October 26 – November 4,
 
 **Live demo:** https://pause-and-nourish.vercel.app
 
-**Judging this project?** Three doors in: the live demo (no login — a fresh browser gets the new-user path, because the founder's real data lives only on his phone), [MODALITIES.md](MODALITIES.md) (all 47 guided moves and the map of which move fits which moment), and the "By the numbers" and testing sections below (80 automated tests, `npm test`). One thing to know before you explore: there are no scripted responses in this app to find — every line it speaks is composed live by Muse Spark 1.3, from the user's own words.
+**Judging this project?** Three doors in: the live demo (no login — a fresh browser gets the new-user path, because the founder's real data lives only on his phone), [MODALITIES.md](MODALITIES.md) (all 47 guided moves and the map of which move fits which moment), and the "By the numbers" and testing sections below (80 automated tests, `npm test`). One thing to know before you explore: there are no scripted responses in this app to find — every line it speaks is composed live by Muse Spark 1.2, from the user's own words.
 
 ---
 
@@ -60,7 +60,7 @@ Local-first. There is no hosted database, no account system, and no analytics.
                │  words and small JSON only — never coordinates,
                │  never stored audio
 ┌──────────────▼──────────── thin API routes ─────────────────────────┐
-│  /api/converse    → Muse Spark 1.3        (the brain)               │
+│  /api/converse    → Muse Spark 1.2        (the brain)               │
 │  /api/transcribe  → Muse Voice Transcribe (fallback ears)           │
 │  /api/speak       → Fish Audio            (the voice — see below)   │
 │  /api/review      → Muse Wonder           (the weekly review)       │
@@ -90,7 +90,7 @@ Local-first. There is no hosted database, no account system, and no analytics.
 
 | Tool | Where | Job in the shipped build |
 |---|---|---|
-| **Muse Spark 1.3** (Meta Model API) | `/api/converse` | The in-the-moment brain: every conversational line, SOS opening, respawn line, and intake question is composed live by Muse Spark from the live situation plus the user's own material. |
+| **Muse Spark 1.2** (Meta Model API) | `/api/converse` | The in-the-moment brain: every conversational line, SOS opening, respawn line, and intake question is composed live by Muse Spark from the live situation plus the user's own material. The 1.2 build is the in-moment default on measured response time (live-timed 2026-11-03: ~4–5 s a turn against ~18–19 s for 1.3, whose reasoning time broke conversational pace); Muse Wonder handles the slower weekly review below. |
 | **Muse Voice Transcribe** (Meta Model API) | `/api/transcribe` | The fallback ears: when the device offers no speech recognition of its own, an answer is recorded (mono WAV) and transcribed here. Most answers never touch it — device recognition serves first. |
 | **Muse Code** | build tool | This app was built with Muse Code during the hackathon window. |
 | **Muse Wonder** | `muse-wonder-1.0` | The weekly review tier: the Statistics page's "Your weekly review" card sends a counts-and-patterns digest (never raw journal text) to `/api/review`, and Wonder answers in three fixed sections — what showed up, what helped, one focus for next week drawn from the user's own playbook. Wired and live-verified Nov 1. |
@@ -103,7 +103,7 @@ Meta's Model API offers **no text-to-speech endpoint**, so the app's spoken voic
 
 - **Every spoken line is composed live by Muse Spark. Fish only gives it a voice.** There are no canned responses and no scripted question lists anywhere in the live flows.
 - For the founder's build, that voice is **his own cloned voice** — "Experienced Male Narrator" by Robert Washburn — used with his consent. A new user instead picks a neutral stock voice (female or male) during story intake; the founder's clone is never used for anyone else.
-- **Fish Audio is not a Meta service.** It is used only as a renderer — every word it speaks was composed by Muse Spark 1.3.
+- **Fish Audio is not a Meta service.** It is used only as a renderer — every word it speaks was composed by Muse Spark 1.2.
 - **The one recorded element in the app** is the user's own **reset line**: a sentence the user records at calm time, in their own voice, played back inside the guided reset step after they choose to eat. It is an exercise instrument — pacing and wording must be exact and repeatable — and it is the deliberate, single exception to "nothing pre-recorded."
 - Speech is delivered sentence-first with the rest prepared behind it, so a long reply starts talking quickly. If a Fish call fails for a chunk, the phone's own voice covers that chunk.
 
