@@ -24,9 +24,14 @@
 //     choices[0].message.content. Transcription: POST /asr/transcribe
 //     (NOT /audio/transcriptions — that path 404s; the batch ASR wire
 //     shape is documented on metaTranscribe below).
+//   - LATENCY A/B (2026-11-03, Bob's directive): the in-moment default
+//     below was switched 1.3 -> "muse-spark-1.2" after live timing
+//     showed the 1.3 converse call at ~18-19s (its hidden reasoning
+//     dominates the Talk round trip). META_CHAT_MODEL env, when set,
+//     still wins over this constant. Revert = restore "muse-spark-1.3".
 
 export const META_API_BASE_URL = process.env.META_API_BASE_URL ?? "https://api.meta.ai/v1";
-export const META_CHAT_MODEL = "muse-spark-1.3";
+export const META_CHAT_MODEL = "muse-spark-1.2";
 /** Muse Wonder — the weekly deep review only (Day 7). The daily
  * brain stays on Spark; Wonder is the slower, heavier pass over a
  * week's entries. Two-tier model use is deliberate architecture. */
