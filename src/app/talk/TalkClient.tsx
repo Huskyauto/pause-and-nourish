@@ -70,22 +70,24 @@ import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/
 // driving gate) — they no longer steer the flow. The journal entry
 // (source "talk") carries the parsed fields plus the transcript.
 //
-// Voice (Bob's directive, 2026-10-30: the automatic voice is the Fish
-// voice): every brain line is spoken by Fish — the user's cloned
-// voice via /api/speak (speakLineChecked) — and the phone's voice is
-// only the last-resort fallback when Fish itself fails.
+// Voice (Bob's call, 2026-11-04, for the hackathon submission):
+// every brain line is spoken by the device's own built-in voice
+// (speakLineChecked → speechSynthesis in lib/speak) — the operating
+// system's text-to-speech, not an AI model. The phoneSpeak path
+// below is the same device voice reached directly, kept as the
+// fallback when the shared helper reports it spoke nothing.
 //
 // ALL-CANNED-OUT (Bob's ruling, 2026-10-31): nothing pre-recorded or
 // pre-scripted speaks in this flow, ever. The old offline scripted
 // spine flow — questions asked by the user's recorded prompt-pack
-// clips, by the baked Fish clips in public/voice/, or by
+// clips, by baked generated clips, or by
 // deterministic phrasing — is GONE: a line recorded or written at
 // calm time is not the fact of this moment, so the LLM composes
 // every spoken line in the moment, from the live situation plus the
 // user's database. When the brain can't be reached (no key, Meta
 // down, a reply the output filter rejected), the app does not fake
 // a conversation: it shows an honest can't-reach-the-brain state —
-// one spoken status line via Fish when Fish answers (a status is
+// one spoken status line via the device voice when it speaks (a status is
 // not a conversation), the plan card, and a door to the pause tools,
 // which work without the brain. The session always opens with the
 // brain's live greeting — the /api/converse opener — never with a
@@ -105,7 +107,7 @@ import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/
 // directive (a kind from the modality repertoire in src/lib/actions
 // .ts, validated server-side); its "say" line proposes the action out
 // loud, Bob answers out loud, and on a yes the client LEADS the
-// action step by step — speaking each step Fish-first, then waiting
+// action step by step — speaking each step with the device voice, then waiting
 // the step's paced seconds — with an "End exercise" escape on screen
 // the whole time. A pass simply continues the conversation. When the
 // session closes, the app asks in plain words how it landed and
@@ -159,8 +161,8 @@ function partOfDayFor(hour: number): PartOfDay {
 }
 
 // The one status line of the can't-reach-the-brain state. It is a
-// status, not a conversation line: spoken once via Fish when Fish
-// answers (speakLineChecked — no phone-voice fallback), otherwise
+// status, not a conversation line: spoken once via the device voice
+// when it speaks (speakLineChecked), otherwise
 // it lives on the unavailable screen as text.
 const UNAVAILABLE_LINE = "I can't reach the brain right now.";
 
@@ -484,8 +486,8 @@ export default function TalkClient() {
     });
   }
 
-  // Fish caps a spoken line at 300 chars — longer lines are split at
-  // sentence boundaries so every part can go to Fish first.
+  // Spoken lines are chunked at ~280 chars — longer lines are split
+  // at sentence boundaries so each part stays a short utterance.
   function chunkForSpeak(text: string): string[] {
     const chunks: string[] = [];
     let rest = text.trim();
@@ -499,22 +501,22 @@ export default function TalkClient() {
     return chunks;
   }
 
-  // Which generated voice speaks for this user (Bob's ruling,
-  // 2026-10-31): an intake user hears the neutral stock voice they
-  // picked at intake — an unchosen pick defaults to the female stock
-  // voice — and NEVER the founder's clone. No profile = the founder:
-  // no voice field is sent and /api/speak uses his clone, as always.
+  // Which device voice speaks for this user (Bob's ruling,
+  // 2026-10-31): an intake user hears the neutral voice they picked
+  // at intake — an unchosen pick defaults to the female pick — and
+  // lib/speak matches it to a device voice when the device offers
+  // one. No profile = the founder: no preference, the device default.
   function speechVoice(): ProfileVoice | undefined {
     const profile = profileRef.current;
     if (!profile) return undefined;
     return profile.voice ?? "female";
   }
 
-  // The conversation's automatic voice (Bob's directive, 2026-10-30):
-  // Fish, via speakLineChecked → /api/speak, speaks every dynamic
-  // line — the founder's clone for him, an intake user's chosen
-  // neutral stock voice for them. The phone's voice is used only for
-  // a part Fish itself failed to speak.
+  // The conversation's automatic voice: the device's built-in voice,
+  // via speakLineChecked, speaks every dynamic line — matched to an
+  // intake user's chosen neutral voice when the device offers one.
+  // The direct phoneSpeak path covers only a part the shared helper
+  // failed to speak.
   async function speakAloud(text: string): Promise<void> {
     for (const chunk of chunkForSpeak(text)) {
       if (!aliveRef.current) return;
@@ -527,8 +529,8 @@ export default function TalkClient() {
   // Conversational brain lines go through the pipelined speaker
   // (latency build, 2026-10-31): sentence by sentence, the first
   // sentence's audio plays as soon as it lands instead of after the
-  // whole line has been generated. Fish-first per chunk and the
-  // phone voice only for a chunk Fish failed — the same rules as
+  // whole line has been generated. Device voice per chunk and the
+  // direct phoneSpeak path only for a chunk it failed — the same rules as
   // speakAloud, which still serves guided-action steps, the outcome
   // question, and the fixed capture prompts (their pacing/wording
   // is by design and is not pipelined).
@@ -835,7 +837,7 @@ export default function TalkClient() {
   }
 
   // The honest can't-reach-the-brain state (Bob's ruling, 2026-10-31).
-  // The status line is spoken once via Fish when Fish answers — a
+  // The status line is spoken once via the device voice — a
   // status is not a fake conversation — and otherwise the screen
   // carries it. The plan card is assembled from whatever was captured
   // so the moment still ends with the user's own words in front of
@@ -1166,7 +1168,7 @@ export default function TalkClient() {
   // There is exactly one flow: the free-form conversation below
   // (begin -> runFreeform). The scripted spine flow that used to
   // live here — fixed questions asked by recorded prompt-pack
-  // clips, baked Fish clips, or deterministic phrasing — was
+  // clips, baked generated clips, or deterministic phrasing — was
   // removed under Bob's all-canned-out ruling (2026-10-31).
 
   async function begin() {
@@ -1200,7 +1202,7 @@ export default function TalkClient() {
       sessionOutcomesRef.current = [];
     }
     // The conversation opens with the brain's own live greeting —
-    // the /api/converse opener on empty history, spoken Fish-first
+    // the /api/converse opener on empty history, spoken by the device voice
     // (Bob's directive, 2026-10-31). No recording opens it — since
     // the all-canned-out purge, no recording opens any live flow.
     await runFreeform();
@@ -1219,7 +1221,7 @@ export default function TalkClient() {
   // Lead one guided action, step by step, in voice (Day 6): the steps
   // and their pacing come from the repertoire data (src/lib/actions
   // .ts), with his plan filling the templates — the swap dealt for
-  // this moment, his why line. Each step is spoken Fish-first, then
+  // this moment, his why line. Each step is spoken by the device voice, then
   // its paced quiet runs; a playReset step plays his own recorded
   // reset line (his voice leads) and only speaks when there is none.
   // The abort flag (the on-screen "End exercise", or ending the
@@ -1349,7 +1351,7 @@ export default function TalkClient() {
     await saveShieldPlan(updated).catch(() => {});
   }
 
-  // The free-form conversation loop: brain speaks (Fish-first), user
+  // The free-form conversation loop: brain speaks (device voice), user
   // answers out loud, background parsers quietly fill the journal,
   // repeat — until the brain closes, the user goes quiet, the turn
   // cap hits, or the driving gate fires. A reply carrying a

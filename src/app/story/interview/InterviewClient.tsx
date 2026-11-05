@@ -159,8 +159,8 @@ export default function InterviewClient() {
   }, []);
 
   // The brain's questions speak through the pipeline: sentence by
-  // sentence, first audio as soon as it lands — Fish first per
-  // chunk, the phone voice only for a chunk Fish failed, in the
+  // sentence, first chunk spoken as soon as it is ready — device
+  // voice per chunk, the direct phone path only for a chunk it failed, in the
   // voice picked so far (it can change mid-interview; the pipeline
   // takes the current pick on every line).
   async function speak(text: string): Promise<void> {

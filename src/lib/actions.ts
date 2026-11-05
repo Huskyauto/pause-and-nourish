@@ -449,7 +449,7 @@ export function actionLabel(kind: GuidedActionKind): string {
 
 // ---------- Paced steps, materialized from the data ----------
 
-// One paced step as the client runs it: speak `say` (Fish first), or
+// One paced step as the client runs it: speak `say` (device voice), or
 // play his recorded reset line for a playReset step (its `say` is
 // the spoken fallback), then wait `waitSeconds` of quiet. The waits
 // are the pacing — an exercise led too fast is just a list read aloud.

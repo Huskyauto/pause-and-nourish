@@ -2,7 +2,7 @@
 // words out. The audio goes to the Meta Model API through this
 // server-side route only — the key (process.env.META_API_KEY) never
 // reaches the browser, and nothing is stored server-side. Mirrors
-// /api/speak's contract: until Bob pastes the key into Vercel, this
+// The shared route contract: until Bob pastes the key into Vercel, this
 // returns 500 {error:"meta_not_configured"} and the client falls back
 // (browser speech recognition, then a one-time type-in escape hatch).
 

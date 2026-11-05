@@ -40,7 +40,7 @@ The app is also built to **work on the phone people already have**. Everything h
 - **Dashboard ("Statistics")** — a reflection, not a report: sessions, choices, urge before-and-after, and your learnings quoted back in your words. Numbers first, prose cut. It also keeps **your garden** — one plant for every completed pause, all-time; the garden only grows — and the **weekly review**: a Muse Wonder pass over the week's counts, pattern summaries, and up to five of your saved learnings, answered in three fixed sections (what showed up, what helped, one focus for next week, drawn from your own playbook).
 - **What I remember about you** — the memory page. Patterns the app derives from your journal (a harder time of day, what has actually helped, the need you name most) are *candidates* until you judge them: Yes / Partly / Not really / Don't track. Only the ones you confirm are ever used by the brain or the morning heads-up; "Don't track" is forever.
 - **The morning heads-up** — an in-app card, never a push: built only from patterns you confirmed and risk windows you declared, capped at two a day, silent in quiet hours (9:30 PM–7:00 AM), and it backs off for a week after two unanswered showings. Every card says why you're seeing it and what was *not* used to build it ("location and microphone were not used").
-- **About this app** — one page gathering the plain-language disclosures: the second brain is an AI companion, not a person; the 988 signpost; the not-therapy posture; where your data lives; and the Fish voice disclosure below.
+- **About this app** — one page gathering the plain-language disclosures: the second brain is an AI companion, not a person; the 988 signpost; the not-therapy posture; where your data lives; and the voice disclosure below.
 - **Guided moves** — a repertoire of **47 moves** the brain can offer and lead out loud when it fits: breathing and grounding, urge surfing, "run the movie" to tomorrow morning, a mouth reset, texting a person before eating, taking a photo first and keeping nothing, closing the kitchen for the night, a kind sentence to yourself, your own daily lines read back to you, and more. All 47, with the map of which move fits which kind of moment, are cataloged in [MODALITIES.md](MODALITIES.md). Steps and pacing are fixed data — an exercise is an instrument, and the model never invents step text. Which move fits, and everything said around it, is the brain's live judgment.
 - **The Friendly Brain** — a small animated companion on the conversing surfaces: it blinks while idle, leans in with sound arcs while listening, sways while thinking, and hops when the reply lands — and every state also carries a plain-words caption underneath ("Listening…", "Thinking it through…"), so the state reads even with motion off. It respects reduced-motion settings.
 - **Get Support** — a standing page with the 988 Suicide and Crisis Lifeline (call or text, 24/7) and ANAD's eating-disorder helpline. The conversation surfaces it too: a deterministic keyword rule watches only for a user's own explicit crisis statements (never inferred states) and answers with one fixed signpost line pointing to 988 and that page. A second fixed signpost, on the same deterministic posture, answers an explicit eating-disorder disclosure — naming the ANAD helpline (1-888-375-7767, Mon–Fri 9 AM–9 PM Central) — and ends the food conversation for that session. Neither rule detects or infers anything; both match only words the user said outright, and a triggered signpost is never saved as a journal learning. The app also discloses itself plainly — on the conversation screens and in the companion's own rules, the second brain is an AI companion, never a person (New York GBL §1700 duties, adopted deliberately).
@@ -62,7 +62,7 @@ Local-first. There is no hosted database, no account system, and no analytics.
 ┌──────────────▼──────────── thin API routes ─────────────────────────┐
 │  /api/converse    → Muse Spark 1.2        (the brain)               │
 │  /api/transcribe  → Muse Voice Transcribe (fallback ears)           │
-│  /api/speak       → Fish Audio            (the voice — see below)   │
+│  (the voice is the device's own built-in text-to-speech — below)   │
 │  /api/review      → Muse Wonder           (the weekly review)       │
 │  /api/mailbox/*   → Upstash KV relay      (companion pairing/events)│
 │  API keys live only in these server routes, never in the browser.   │
@@ -99,20 +99,20 @@ Local-first. There is no hosted database, no account system, and no analytics.
 
 ## Voice disclosure — read this one
 
-Meta's Model API offers **no text-to-speech endpoint**, so the app's spoken voice is provided by **Fish Audio** (`/api/speak`, server-side key). This is stated plainly rather than buried:
+Meta's Model API offers **no text-to-speech endpoint**, so the app's spoken voice is the **device's own built-in text-to-speech** — the operating-system / browser voice, rendered entirely on the device. This is stated plainly rather than buried:
 
-- **Every spoken line is composed live by Muse Spark. Fish only gives it a voice.** There are no canned responses and no scripted question lists anywhere in the live flows.
-- For the founder's build, that voice is **his own cloned voice** — "Experienced Male Narrator" by Robert Washburn — used with his consent. A new user instead picks a neutral stock voice (female or male) during story intake; the founder's clone is never used for anyone else.
-- **Fish Audio is not a Meta service.** It is used only as a renderer — every word it speaks was composed by Muse Spark 1.2.
+- **Every spoken line is composed live by Muse Spark 1.2.** The device voice only reads the words aloud. There are no canned responses and no scripted question lists anywhere in the live flows.
+- The built-in voice is **not an AI model** and it is not a Meta service: it is the same system voice the device uses for accessibility read-aloud. No text leaves the device for speech — the reply text is already on the device, and the voice renders it there.
+- A new user picks a neutral voice (female or male) during story intake; when the device offers a matching voice, that one speaks, otherwise the device default does.
 - **The one recorded element in the app** is the user's own **reset line**: a sentence the user records at calm time, in their own voice, played back inside the guided reset step after they choose to eat. It is an exercise instrument — pacing and wording must be exact and repeatable — and it is the deliberate, single exception to "nothing pre-recorded."
-- Speech is delivered sentence-first with the rest prepared behind it, so a long reply starts talking quickly. If a Fish call fails for a chunk, the phone's own voice covers that chunk.
+- Speech is delivered chunk by chunk at sentence boundaries, so a long reply starts talking with its first sentence instead of after the whole line.
 
 ## Privacy
 
 - **Your data stays on your device.** Journal, plan, places, profile, recordings, and companion records are stored locally (IndexedDB, localStorage fallback). There are no accounts, no hosted database, no analytics, and no trackers.
 - **Coordinates never leave the device.** Saved places are matched on the phone; the only thing that can travel is a place *name* (like "the shop"), and only inside a conversation you started, only if you saved places and granted location permission. Talk and SOS never trigger a permission prompt — setup is the only place one can appear.
 - **Audio is not kept. Words are.** Your spoken answers become text for the journal; the recordings themselves are discarded. One honest caveat: when your device offers speech recognition, that service does the listening — on Android Chrome it is generally run by Google — and the app says so on its own screens. When the device offers none, the app's fallback transcription (Muse Voice Transcribe) hears the answer instead.
-- **Conversation content** goes to the Meta Model API (and spoken text to Fish Audio) through the server routes so the brain can think and speak; it is not stored server-side by this app. The weekly review, when a user asks for one, is composed from counts, pattern summaries, and up to five of the user's saved learnings in their own words. During the hackathon the app runs on free Meta developer credits, whose terms may allow content sent to the API to be used for product improvement.
+- **Conversation content** goes to the Meta Model API through the server routes so the brain can think; speech is rendered on the device and no text is sent anywhere for it. Conversation content is not stored server-side by this app. The weekly review, when a user asks for one, is composed from counts, pattern summaries, and up to five of the user's saved learnings in their own words. During the hackathon the app runs on free Meta developer credits, whose terms may allow content sent to the API to be used for product improvement.
 - **The companion mailbox** is the one server-side store: pairing digests (SHA-256, never the raw codes) and small event notes in an Upstash KV relay, so the PWA and the companion app can find each other. A registration from a different owner cannot replace a live pairing, and the owner's revoke wipes the server mailbox, not just the browser's copies.
 - **Delete everything** — available in the app — clears the journal store, the plan store, and the voice store in IndexedDB; the journal, plan, profile, places, companion, and recording fallbacks in localStorage; the companion owner key; the location-permission flag; and the SOS session guards. It leaves no app state behind on the device.
 
@@ -131,7 +131,7 @@ Meta's Model API offers **no text-to-speech endpoint**, so the app's spoken voic
 **Environment variables** (names only — set them in your shell locally, or in Vercel project settings in production):
 
 - `META_API_KEY` — enables the brain (`/api/converse`) and fallback transcription (`/api/transcribe`).
-- `FISH_API_KEY` — enables the spoken voice (`/api/speak`). Without it, spoken lines fall back to the phone's voice; without the Meta key, Talk shows an honest "can't reach the brain" state instead of faking a conversation. The on-device pause toolkit works without either key.
+- The spoken voice needs no key and no service: it is the device's own built-in text-to-speech. Without the Meta key, Talk shows an honest "can't reach the brain" state instead of faking a conversation. The on-device pause toolkit works without any key.
 
 ```bash
 npm install

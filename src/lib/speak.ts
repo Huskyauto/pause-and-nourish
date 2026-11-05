@@ -1,73 +1,135 @@
-// Fish voice-out, client side (2026-10-29): the one shared way to ask
-// /api/speak to say a line and play what comes back. For the founder
-// that's his own cloned voice; an intake user passes their chosen
-// neutral voice ("female" | "male") and the server speaks in that
-// stock voice instead (Bob's ruling, 2026-10-31) — the founder's clone
-// is never lent to another user. Omitting the voice = the founder
-// path, exactly as before. Deliberately quiet in both directions — Fish credits are
-// metered, so the SOS and pause flows fire this at most once per flow,
-// and every failure (network, key not configured yet, Fish error,
-// blocked autoplay) is silent. The words are always already on screen
-// as text. Since the all-canned-out purge (2026-10-31) the generated
-// voice is the ONLY spoken channel in live flows — no recording opens
-// or interrupts them; the single exception is the user's recorded
-// reset line, played by the Talk flow inside the guided reset step.
-// The Talk It Through conversation is the exception to the once-per-
-// flow discipline: by Bob's directive (2026-10-30) its automatic voice
-// IS the Fish voice, spoken line by line via speakLineChecked below.
+// Device voice-out, client side (switched 2026-11-04, Bob's call for
+// the hackathon submission): every line the second brain speaks is
+// spoken by the device's own built-in text-to-speech — the operating
+// system / browser voice. That voice is not an AI model and nothing
+// leaves the device to render speech; every word is still composed
+// live by Muse Spark, exactly as before — only the renderer changed
+// (a hosted voice service spoke the lines before this switch).
+//
+// An intake user picks a neutral voice ("female" | "male") at setup;
+// when the device offers a matching voice, that one speaks, otherwise
+// the device default does. The founder passes no preference and hears
+// the device default. Failures are silent by design — no speech
+// support, a blocked utterance, an error: the words are always
+// already on screen as text.
+//
+// The single recorded exception stands: the user's own recorded
+// reset line, played by the Talk flow inside the guided reset step,
+// is a recording, not synthesized speech.
 
 import type { ProfileVoice } from "./journal";
 
-export async function speakLine(text: string, voice?: ProfileVoice): Promise<void> {
-  const line = text.trim();
-  if (!line) return;
+// Name hints for matching a device voice to the user's neutral-voice
+// pick. Device voice catalogs vary widely; this is best-effort and
+// the device default is always an acceptable answer.
+const FEMALE_HINTS = [
+  "female", "zira", "samantha", "victoria", "karen", "moira", "tessa",
+  "fiona", "serena", "allison", "ava", "susan", "catherine", "jenny",
+  "aria", "emma", "joanna", "salli", "kimberly", "amy", "nicky",
+];
+const MALE_HINTS = [
+  "male", "david", "daniel", "alex", "fred", "george", "arthur",
+  "brian", "christopher", "eric", "guy", "matthew", "justin", "joey",
+  "ryan", "brandon",
+];
+
+function pickDeviceVoice(pref?: ProfileVoice): SpeechSynthesisVoice | null {
   try {
-    const res = await fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(voice ? { text: line, voice } : { text: line }),
-    });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-    await audio.play().catch(() => URL.revokeObjectURL(url));
+    const voices = window.speechSynthesis?.getVoices() ?? [];
+    if (!voices.length) return null;
+    const en = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
+    const pool = en.length ? en : voices;
+    if (pref) {
+      const hints = pref === "female" ? FEMALE_HINTS : MALE_HINTS;
+      const match = pool.find((v) =>
+        hints.some((h) => v.name.toLowerCase().includes(h)),
+      );
+      if (match) return match;
+    }
+    return pool.find((v) => v.default) ?? pool[0] ?? null;
   } catch {
-    // Silent by design — see header.
+    return null;
   }
 }
 
-// ---------- pipelined speech (latency build, 2026-10-31) ----------
+// Device voices often load after the first getVoices() call; warming
+// the catalog when it changes keeps the pick accurate later.
+try {
+  window.speechSynthesis?.addEventListener?.("voiceschanged", () => {
+    try {
+      window.speechSynthesis.getVoices();
+    } catch {
+      // Catalog stays whatever it was.
+    }
+  });
+} catch {
+  // No speech support — every call below fails silent.
+}
+
+// Speak one chunk of text with the device voice. Resolves true when
+// the chunk was spoken (or a safety timeout let a stuck utterance
+// go), false when speech is unavailable or the utterance errored —
+// callers use the boolean only to decide whether THEIR fallback
+// should cover the chunk.
+function speakWithDevice(text: string, pref?: ProfileVoice): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return resolve(false);
+      const line = text.trim();
+      if (!line) return resolve(false);
+      const u = new SpeechSynthesisUtterance(line);
+      const voice = pickDeviceVoice(pref);
+      if (voice) u.voice = voice;
+      u.rate = 0.98;
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (!done) {
+          done = true;
+          resolve(ok);
+        }
+      };
+      u.onend = () => finish(true);
+      u.onerror = () => finish(false);
+      synth.speak(u);
+      // Never let a stuck utterance hang a caller.
+      setTimeout(() => finish(true), Math.max(3000, line.length * 95));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export async function speakLine(text: string, voice?: ProfileVoice): Promise<void> {
+  await speakWithDevice(text, voice);
+}
+
+// The same device speech as speakLine, but it reports whether the
+// line was actually spoken. Talk It Through uses this for every
+// dynamic line: it needs to know the question is done before it
+// starts listening for the answer, and its fallback chain may drop
+// to its own phone-voice path only when this spoke nothing.
+export async function speakLineChecked(
+  text: string,
+  voice?: ProfileVoice,
+): Promise<boolean> {
+  return speakWithDevice(text, voice);
+}
+
+// ---------- chunked speech ----------
 //
-// A brain line used to be spoken as ONE /api/speak call: Fish
-// generated the whole line, the client downloaded the whole MP3,
-// and only then did the first sound play — the full generation time
-// of every sentence sat in front of the first word. The pipeline
-// below splits a line into sentences, requests the first sentence
-// immediately, starts playback the moment ITS audio lands, and
-// fetches the next sentence while the current one plays (fetch-
-// ahead of one, so a cancelled line wastes at most one extra
-// sentence of Fish credit). A new line — or cancel() — supersedes
-// the queue cleanly: in-flight fetches are discarded, the playing
-// audio stops, and no fallback fires for a cancelled chunk.
-//
-// The standing rules are unchanged: Fish first for every chunk,
-// the phone's voice (the caller's fallback) only for a chunk Fish
-// itself failed to speak, and the user's voice selection (founder
-// clone / chosen neutral stock voice) passed through on every call.
-// Guided-action steps do NOT use this — they pace by design through
+// A brain line is split into sentence chunks (first sentence solo,
+// the rest packed at sentence boundaries up to ~280 chars) and the
+// chunks are spoken in order, so a long reply starts talking with
+// its first sentence instead of after the whole line. A new line —
+// or cancel() — supersedes the queue cleanly: the device speech is
+// cancelled and no fallback fires for a cancelled chunk. Guided-
+// action steps do NOT use this — they pace by design through
 // speakLineChecked/speakAloud exactly as before.
 
-// Split a line into pipeline chunks. Chunk boundaries (refined
-// 2026-10-31, Fish credit discipline): the FIRST sentence ships
-// solo — its audio is the latency win, the first sound the user
-// hears — and everything after it is packed greedily at sentence
-// boundaries into chunks of at most ~280 chars (the same cap the
-// app's other chunking uses), so a three-sentence line costs two
-// Fish calls, not three. A sentence is never split mid-way unless
-// that single sentence alone exceeds the cap; then it is cut the
-// way the old chunker cut it (prefer a ". " boundary, else the cap).
+// Split a line into chunks at sentence boundaries. A sentence is
+// never split mid-way unless that single sentence alone exceeds the
+// cap; then it is cut at a ". " boundary where possible, else the cap.
 export function splitSentences(text: string): string[] {
   const line = text.trim();
   if (!line) return [];
@@ -109,27 +171,12 @@ export function splitSentences(text: string): string[] {
   return chunks;
 }
 
-async function fetchChunkAudio(text: string, voice?: ProfileVoice): Promise<string | null> {
-  try {
-    const res = await fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(voice ? { text, voice } : { text }),
-    });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
-  } catch {
-    return null;
-  }
-}
-
 export interface SpeechPipeline {
-  // Speak one line, pipelined sentence by sentence. Resolves when
-  // the line has finished (or was superseded/cancelled).
+  // Speak one line, chunk by chunk in order. Resolves when the line
+  // has finished (or was superseded/cancelled).
   speak: (text: string, voice?: ProfileVoice) => Promise<void>;
   // Stop the current line and drop its queue. Never triggers the
-  // phone-voice fallback.
+  // fallback.
   cancel: () => void;
 }
 
@@ -137,129 +184,37 @@ export function createSpeechPipeline(opts: {
   fallback: (chunk: string) => Promise<void>;
 }): SpeechPipeline {
   let generation = 0;
-  let currentAudio: HTMLAudioElement | null = null;
-  let interruptPlay: (() => void) | null = null;
 
-  function stopCurrent() {
-    if (interruptPlay) {
-      const f = interruptPlay;
-      interruptPlay = null;
-      f();
+  function stopDeviceSpeech() {
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      // Nothing to stop.
     }
-    if (currentAudio) {
-      try {
-        currentAudio.pause();
-      } catch {
-        // Already stopped.
-      }
-      currentAudio = null;
-    }
-  }
-
-  function playUrl(url: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const audio = new Audio(url);
-      currentAudio = audio;
-      let done = false;
-      const finish = (ok: boolean) => {
-        if (done) return;
-        done = true;
-        interruptPlay = null;
-        if (currentAudio === audio) currentAudio = null;
-        URL.revokeObjectURL(url);
-        resolve(ok);
-      };
-      interruptPlay = () => finish(false);
-      audio.addEventListener("ended", () => finish(true), { once: true });
-      audio.addEventListener("error", () => finish(false), { once: true });
-      audio.play().catch(() => finish(false));
-      // A generated sentence is seconds long; never hang a caller.
-      setTimeout(() => finish(true), 60000);
-    });
   }
 
   async function speak(text: string, voice?: ProfileVoice): Promise<void> {
     const gen = ++generation;
-    stopCurrent();
+    stopDeviceSpeech();
     const chunks = splitSentences(text);
-    let pending: Promise<string | null> | null = null;
-    for (let i = 0; i < chunks.length; i++) {
+    for (const chunk of chunks) {
       if (gen !== generation) return;
-      const thisFetch = pending ?? fetchChunkAudio(chunks[i], voice);
-      pending = i + 1 < chunks.length ? fetchChunkAudio(chunks[i + 1], voice) : null;
-      if (pending) {
-        // If this line is superseded before the ahead-fetch is
-        // consumed, don't leak its blob URL.
-        const ahead = pending;
-        void ahead.then((u) => {
-          if (gen !== generation && u) URL.revokeObjectURL(u);
-        });
-      }
-      const url = await thisFetch;
-      if (gen !== generation) {
-        if (url) URL.revokeObjectURL(url);
-        return;
-      }
-      if (!url) {
-        // Fish failed this chunk — the phone voice speaks it, the
-        // same per-chunk fallback rule as speakAloud.
-        await opts.fallback(chunks[i]);
-        continue;
-      }
-      const ok = await playUrl(url);
+      const ok = await speakWithDevice(chunk, voice);
       if (gen !== generation) return;
-      if (!ok) await opts.fallback(chunks[i]);
+      if (!ok) {
+        // The device voice spoke nothing for this chunk — the
+        // caller's fallback covers it, the same per-chunk rule as
+        // speakAloud.
+        await opts.fallback(chunk);
+        if (gen !== generation) return;
+      }
     }
   }
 
   function cancel() {
     generation++;
-    stopCurrent();
+    stopDeviceSpeech();
   }
 
   return { speak, cancel };
-}
-
-// The same Fish call as speakLine, but it waits until the line has
-// actually finished playing and reports whether Fish spoke it. Talk
-// It Through uses this for every dynamic line: it needs to know the
-// question is done before it starts listening for the answer, and its
-// fallback chain may drop to the phone voice only when Fish itself
-// failed. Failures are still silent — the boolean is the only signal.
-export async function speakLineChecked(text: string, voice?: ProfileVoice): Promise<boolean> {
-  const line = text.trim();
-  if (!line) return false;
-  let res: Response;
-  try {
-    res = await fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(voice ? { text: line, voice } : { text: line }),
-    });
-  } catch {
-    return false;
-  }
-  if (!res.ok) return false;
-  try {
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    return await new Promise<boolean>((resolve) => {
-      const audio = new Audio(url);
-      let done = false;
-      const finish = (ok: boolean) => {
-        if (!done) {
-          done = true;
-          URL.revokeObjectURL(url);
-          resolve(ok);
-        }
-      };
-      audio.addEventListener("ended", () => finish(true), { once: true });
-      audio.addEventListener("error", () => finish(false), { once: true });
-      audio.play().catch(() => finish(false));
-      // A generated line is well under a minute; never hang a caller.
-      setTimeout(() => finish(true), 60000);
-    });
-  } catch {
-    return false;
-  }
 }

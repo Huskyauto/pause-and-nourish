@@ -20,7 +20,7 @@
 // the LLM composes every spoken line in the moment, or the app
 // honestly says it can't reach the brain). Until META_API_KEY is in
 // Vercel this returns 500 {error:"meta_not_configured"} (mirroring
-// /api/speak) and the client shows the same honest state.
+// the old voice route) and the client shows the same honest state.
 //
 // Personable-companion layer (Bob's directive, 2026-10-30): the brain
 // knows his name, greets him like someone who knows him, checks on

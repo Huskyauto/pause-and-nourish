@@ -1,6 +1,6 @@
 // Meta Model API access — SERVER-SIDE ONLY (imported by the /api routes,
 // never by client code). The API key lives in process.env.META_API_KEY
-// and never reaches the browser, mirroring /api/speak's Fish pattern.
+// and never reaches the browser, mirroring the other routes' pattern.
 //
 // *** LIVE-VERIFIED (Day 5, Oct 30) ***
 // Constants corrected against GET https://api.meta.ai/v1/models with

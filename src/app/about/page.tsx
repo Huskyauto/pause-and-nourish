@@ -86,8 +86,9 @@ export default function AboutPage() {
             developer services.
           </li>
           <li>
-            Each reply the app speaks aloud is sent as text to a voice service (Fish
-            Audio), which returns the audio.
+            The replies the app speaks aloud are spoken by your device&apos;s own
+            built-in voice, right on the device — no text is sent anywhere for
+            speech.
           </li>
           <li>
             If you ask for the weekly review, it is composed from counts, pattern
@@ -118,12 +119,13 @@ export default function AboutPage() {
         <p className="mt-2 leading-relaxed text-stone-600">
           Every line the second brain speaks is composed live, in the moment, by the AI —
           nothing conversational is a recording played by rule. The lines are spoken aloud
-          by a voice service (Fish Audio). In the founder&apos;s own app, that voice is his
-          own cloned voice, recorded and used with his consent; when you set the app up,
-          you choose a neutral voice, and you can also record your own lines in your own
-          voice. One deliberate exception: a single short recorded line the founder made
-          for the guided reset exercise plays inside that exercise, as part of the
-          exercise itself.
+          by your device&apos;s own built-in voice (the operating system&apos;s
+          text-to-speech — not an AI model), rendered entirely on this device. When you
+          set the app up, you choose a neutral voice — a woman&apos;s voice or a
+          man&apos;s voice — and when your device offers a matching voice, that one
+          speaks. You can also record your own lines in your own voice. One deliberate
+          exception: a single short recorded line the founder made for the guided reset
+          exercise plays inside that exercise, as part of the exercise itself.
         </p>
       </section>
 

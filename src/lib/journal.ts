@@ -151,12 +151,12 @@ export const EMPTY_SHIELD_PLAN: ShieldPlan = {
 // and word-for-today deliberately do NOT live here — they ride the
 // Shield Plan fields that already exist, so intake and setup can
 // never disagree about them.
-// The neutral default voice an intake user picks for their second
-// brain (Bob's ruling, 2026-10-31): a new user has no clone of their
-// own (that would need their own Fish setup), so the generated voice
-// is a neutral stock voice — chosen by the user, never presumed.
-// (The generated voice speaks every conversational line; a user's
-// own recording plays only inside the guided reset step.)
+// The neutral voice an intake user picks for their second brain
+// (Bob's ruling, 2026-10-31): the device's own built-in voice speaks
+// every conversational line, and the pick (female | male) chooses a
+// matching device voice when the device offers one — chosen by the
+// user, never presumed. (A user's own recording plays only inside
+// the guided reset step.)
 export type ProfileVoice = "female" | "male";
 
 export interface UserProfile {

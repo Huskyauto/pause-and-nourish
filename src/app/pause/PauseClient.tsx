@@ -30,7 +30,7 @@ import { CRISIS_SAY, ED_SAY, matchesCrisis, matchesEatingDisorder } from "@/lib/
 //   notice path: check-in hands off (?entry=<id>) → tool picker (need-matched
 //   tool first) → run → outcome capture (urge before → after).
 //   SOS path: ?sos=1 → entry created on tap, the brain composes the
-//   opening line for this exact moment (spoken Fish-first), plain SOS
+//   opening line for this exact moment (spoken by the device voice), plain SOS
 //   screen (why line large + three locked taps) → Urge Surfing runs →
 //   outcome capture. No form stands in front of the pause.
 //   open path: plain /pause — the toolkit on its own, nothing logged.
@@ -136,7 +136,7 @@ export default function PauseClient() {
   const [recommended, setRecommended] = useState<PauseTool>(PAUSE_TOOLS[0]);
 
   // SOS opening line: composed by the brain for this moment and spoken
-  // Fish-first (all-canned-out, 2026-10-31 — no recorded cue, no
+  // Device voice (all-canned-out, 2026-10-31 — no recorded cue, no
   // verbatim why-line read). planRef/profileRef hold the material the
   // moment request is built from; sosLineRef + the sessionStorage flag
   // keep the request to once per SOS entry.
@@ -250,7 +250,7 @@ export default function PauseClient() {
   // composes the one spoken line for this exact moment — from the
   // clock, today's journal, a declared risk window, and the user's
   // plan as material — via /api/converse mode "moment", and it is
-  // spoken Fish-first. Generation failure is silence: the pause
+  // spoken by the device voice. Speech failure is silence: the pause
   // toolkit runs speechless, and no canned line ever stands in.
 
   function momentPartOfDay(hour: number): string {
@@ -505,7 +505,7 @@ export default function PauseClient() {
   // No recorded reset line, no locked spoken sentence (all-canned-out,
   // 2026-10-31): when the respawn screen opens, the brain composes the
   // checkpoint line from the choice just made and the user's plan as
-  // material, and it is spoken Fish-first, once per mount. Silent on
+  // material, and it is spoken by the device voice, once per mount. Silent on
   // failure — the headline on screen already says it in text.
   useEffect(() => {
     if (phase !== "respawn") return;

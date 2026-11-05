@@ -2,7 +2,7 @@
 // (converse, speak, transcribe, review) — added 2026-11-02 after an
 // external review pointed out they were open to anyone with the
 // app URL: no origin check, no rate limit, and each call spends
-// real Meta/Fish credit.
+// real Meta credit.
 //
 // Two layers, honestly scoped:
 // - Origin: a browser call whose Origin host is not this app's own

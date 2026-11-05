@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { EMPTY_SHIELD_PLAN, getShieldPlan, saveShieldPlan, type ShieldPlan } from "@/lib/journal";
+import { speakLineChecked } from "@/lib/speak";
 import { ResetLineSetup } from "./VoiceCueSetup";
 import {
   applyDueDirectness,
@@ -25,12 +26,10 @@ export default function ShieldPage() {
   const [newPlace, setNewPlace] = useState("");
   const [newNegative, setNewNegative] = useState("");
   const [newPositive, setNewPositive] = useState("");
-  // Fish voice-out test ("Hear my voice say it", under Your voice below):
-  // one fixed line through /api/speak, played in the browser.
+  // Voice-out test ("Hear the voice say it", under Your voice below):
+  // one fixed line spoken by the device's own built-in voice.
   const [speakState, setSpeakState] = useState<"idle" | "loading" | "error">("idle");
   const [speakNote, setSpeakNote] = useState("");
-  const speakAudioRef = useRef<HTMLAudioElement | null>(null);
-  const speakUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -62,38 +61,13 @@ export default function ShieldPage() {
   async function hearMyVoice() {
     setSpeakState("loading");
     setSpeakNote("");
-    try {
-      const res = await fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: "This is your voice, on demand. Same voice that talks you through the moment.",
-        }),
-      });
-      if (!res.ok) {
-        let code = "";
-        try {
-          code = ((await res.json()) as { error?: string }).error ?? "";
-        } catch {
-          // Non-JSON error body — the generic note below covers it.
-        }
-        setSpeakNote(
-          code === "voice_not_configured"
-            ? "Your Fish key isn't in Vercel yet — once it's pasted in, this button speaks."
-            : "Your voice couldn't speak just now — try again in a moment.",
-        );
-        setSpeakState("error");
-        return;
-      }
-      const blob = await res.blob();
-      if (speakUrlRef.current) URL.revokeObjectURL(speakUrlRef.current);
-      speakUrlRef.current = URL.createObjectURL(blob);
-      if (!speakAudioRef.current) speakAudioRef.current = new Audio();
-      speakAudioRef.current.src = speakUrlRef.current;
-      await speakAudioRef.current.play();
+    const spoken = await speakLineChecked(
+      "This is the voice that talks you through the moment.",
+    );
+    if (spoken) {
       setSpeakState("idle");
-    } catch {
-      setSpeakNote("Your voice couldn't speak just now — try again in a moment.");
+    } else {
+      setSpeakNote("The voice couldn't speak just now — try again in a moment.");
       setSpeakState("error");
     }
   }
@@ -123,9 +97,11 @@ export default function ShieldPage() {
       <section className="mt-10">
         <h2 className="text-xl font-semibold text-stone-900">Your voice</h2>
         <p className="mt-2 leading-relaxed text-stone-600">
-          When you talk with your second brain, it speaks out loud in the voice set up for you —
-          your own cloned voice, or, if you started with the story interview, the calm voice you
-          chose there. There&apos;s nothing to pick here; that&apos;s simply the voice it uses.
+          When you talk with your second brain, it speaks out loud in your device&apos;s own
+          built-in voice. If you started with the story interview, the neutral voice you chose
+          there — a woman&apos;s voice or a man&apos;s voice — picks the matching voice on your
+          device when it has one. There&apos;s nothing to pick here; that&apos;s simply the
+          voice it uses.
         </p>
         <p className="mt-2 leading-relaxed text-stone-600">
           The one recording in the app is yours: the reset line you record just below, in your own
@@ -138,10 +114,10 @@ export default function ShieldPage() {
             disabled={speakState === "loading"}
             className="rounded-full border border-stone-300 bg-white px-5 py-3 font-semibold text-stone-800 transition hover:border-[#2f5d3a] disabled:opacity-50"
           >
-            {speakState === "loading" ? "Getting your voice…" : "Hear my voice say it"}
+            {speakState === "loading" ? "Speaking…" : "Hear the voice say it"}
           </button>
           <p className="mt-2 text-sm text-stone-600">
-            Your cloned voice, on demand — the one that will talk you through a moment.
+            Your device&apos;s voice, on demand — the one that will talk you through a moment.
           </p>
           {speakNote && <p className="mt-2 text-sm text-stone-600">{speakNote}</p>}
         </div>
